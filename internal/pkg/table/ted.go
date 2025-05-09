@@ -18,9 +18,14 @@ type LsTed struct {
 }
 
 func (ted *LsTed) Update(tedElems []TedElem) {
+	// check Before State Update TED
+	fmt.Printf("Before State Update TED: %v\n", ted)
 	for _, tedElem := range tedElems {
 		tedElem.UpdateTed(ted)
 	}
+	// check After State Update TED
+	fmt.Printf("After State Update TED: %v\n", ted)
+	ted.Print()
 }
 
 func (ted *LsTed) Print() {
