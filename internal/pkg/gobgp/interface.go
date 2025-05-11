@@ -127,7 +127,11 @@ func ConvertToTedElem(dst *api.Destination) ([]table.TedElem, error) {
 			return lsSrv6SIDList, nil
 		// TODO: Implement LsPrefixV6NLRI handling
 		case *api.LsPrefixV6NLRI:
-			return nil, nil
+			lsPrefixV6List, err := getLsPrefixV6List(path.GetPattrs())
+			if err != nil {
+				return nil, fmt.Errorf("failed to process LS Prefix V6 NLRI: %v", err)
+			}
+			return lsPrefixV6List, nil
 		default:
 			return nil, errors.New("invalid LS Link State NLRI type")
 		}
@@ -282,6 +286,68 @@ func getLsPrefixV4(lsNlri *api.LsAddrPrefix, sidIndex uint32) (*table.LsPrefixV4
 	}
 
 	return lsPrefixV4, nil
+}
+
+func getLsPrefixV6List(pathAttrs []*anypb.Any) ([]table.TedElem, error) {
+	var lsPrefixV6List []table.TedElem
+
+	for _, pathAttr := range pathAttrs {
+		typedPathAttr, err := pathAttr.UnmarshalNew()
+		if err != nil {
+			return nil, fmt.Errorf("failed to unmarshal path attribute: %v", err)
+		}
+
+		switch typedPathAttr := typedPathAttr.(type) {
+		case *api.LsAttribute:
+			fmt.Printf("PrefixV6NLRI LS Attribute: %v\n", typedPathAttr)
+		case *api.MpReachNLRIAttribute:
+			for _, nlri := range typedPathAttr.GetNlris() {
+				typedNlri, err := nlri.UnmarshalNew()
+				if err != nil {
+					return nil, fmt.Errorf("failed to unmarshal NLRI: %v", err)
+				}
+
+				if lsNlri, ok := typedNlri.(*api.LsAddrPrefix); ok {
+					lsPrefixV6, err := getLsPrefixV6(lsNlri)
+					if err != nil {
+						return nil, fmt.Errorf("failed to get LS Prefix V6: %v", err)
+					}
+					lsPrefixV6List = append(lsPrefixV6List, lsPrefixV6)
+				}
+			}
+		}
+	}
+
+	return lsPrefixV6List, nil
+}
+
+func getLsPrefixV6(lsNlri *api.LsAddrPrefix) (*table.LsPrefixV6, error) {
+	prefNlri, err := lsNlri.GetNlri().UnmarshalNew()
+	if err != nil {
+		return nil, fmt.Errorf("failed to unmarshal LS Prefix V6: %v", err)
+	}
+	prefv6Nlri, ok := prefNlri.(*api.LsPrefixV6NLRI)
+	if !ok {
+		return nil, errors.New("invalid LS prefix v6 NLRI type")
+	}
+
+	localNodeID := prefv6Nlri.GetLocalNode().GetIgpRouterId()
+	localNodeAsn := prefv6Nlri.GetLocalNode().GetAsn()
+	prefixV6 := prefv6Nlri.GetPrefixDescriptor().GetIpReachability()
+
+	localNode := table.NewLsNode(localNodeAsn, localNodeID)
+	lsPrefixV6 := table.NewLsPrefixV6(localNode)
+
+	if len(prefixV6) != 1 {
+		return nil, errors.New("invalid prefix length: expected 1 prefix")
+	}
+
+	lsPrefixV6.Prefix, err = netip.ParsePrefix(prefixV6[0])
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse prefix: %v", err)
+	}
+
+	return lsPrefixV6, nil
 }
 
 func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.Any) ([]table.TedElem, error) {

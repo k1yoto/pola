@@ -44,6 +44,10 @@ func (ted *LsTed) Print() {
 					fmt.Printf("      index: %d\n", prefix.SidIndex)
 				}
 			}
+			fmt.Printf("  PrefixesV6:\n")
+			for _, prefix := range node.PrefixesV6 {
+				fmt.Printf("    %s\n", prefix.Prefix.String())
+			}
 			fmt.Printf("  Links:\n")
 			for _, link := range node.Links {
 				fmt.Printf("    Local: %s Remote: %s\n", link.LocalIP.String(), link.RemoteIP.String())
@@ -84,6 +88,7 @@ type LsNode struct {
 	SrgbEnd    uint32 // in BGP-LS Attr
 	Links      []*LsLink
 	Prefixes   []*LsPrefixV4
+	PrefixesV6 []*LsPrefixV6
 	SRv6SIDs   []*LsSrv6SID
 }
 
@@ -221,10 +226,42 @@ func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
 	localNode.Prefixes = append(localNode.Prefixes, lp)
 }
 
+type LsPrefixV6 struct {
+	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
+	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
+}
+
+func NewLsPrefixV6(localNode *LsNode) *LsPrefixV6 {
+	return &LsPrefixV6{
+		LocalNode: localNode,
+	}
+}
+
+func (lp *LsPrefixV6) UpdateTed(ted *LsTed) {
+	nodes, asn := ted.Nodes, lp.LocalNode.Asn
+
+	if _, ok := nodes[asn]; !ok {
+		nodes[asn] = make(map[string]*LsNode)
+	}
+
+	if _, ok := nodes[asn][lp.LocalNode.RouterID]; !ok {
+		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.Asn, lp.LocalNode.RouterID)
+	}
+
+	localNode := nodes[asn][lp.LocalNode.RouterID]
+	for _, pref := range localNode.Prefixes {
+		if pref.Prefix.String() == lp.Prefix.String() {
+			return
+		}
+	}
+
+	localNode.PrefixesV6 = append(localNode.PrefixesV6, lp)
+}
+
 type LsSrv6SID struct {
 	LocalNode        *LsNode  // primary key, in MP_REACH_NLRI Attr
 	Sids             []string // in LsSrv6SID Attr
-	EndpointBehavior uint32   // in srv6EndpointBehavior Attr
+	EndpointBehavior uint32   // in BGP-LS Attr
 	MultiTopoIDs     []uint32 // in LsSrv6SID Attr
 	ServiceType      uint32   // in LsSrv6SID Attr
 	TrafficType      uint32   // in LsSrv6SID Attr
