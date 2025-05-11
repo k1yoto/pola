@@ -383,14 +383,16 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 	for _, lsNodes := range s.pce.ted.Nodes {
 		for _, lsNode := range lsNodes {
 			node := &pb.LsNode{
-				Asn:        lsNode.Asn,
-				RouterID:   lsNode.RouterID,
-				IsisAreaID: lsNode.IsisAreaID,
-				Hostname:   lsNode.Hostname,
-				SrgbBegin:  lsNode.SrgbBegin,
-				SrgbEnd:    lsNode.SrgbEnd,
-				LsLinks:    make([]*pb.LsLink, 0, len(lsNode.Links)),
-				LsPrefixes: make([]*pb.LsPrefix, 0, len(lsNode.Prefixes)),
+				Asn:          lsNode.Asn,
+				RouterID:     lsNode.RouterID,
+				IsisAreaID:   lsNode.IsisAreaID,
+				Hostname:     lsNode.Hostname,
+				SrgbBegin:    lsNode.SrgbBegin,
+				SrgbEnd:      lsNode.SrgbEnd,
+				LsLinks:      make([]*pb.LsLink, 0, len(lsNode.Links)),
+				LsPrefixes:   make([]*pb.LsPrefix, 0, len(lsNode.Prefixes)),
+				LsPrefixesV6: make([]*pb.LsPrefixV6, 0, len(lsNode.PrefixesV6)),
+				LsSrv6SIDs:   make([]*pb.LsSrv6SID, 0, len(lsNode.SRv6SIDs)),
 			}
 
 			for _, lsLink := range lsNode.Links {
@@ -430,6 +432,38 @@ func (s *APIServer) GetTed(context.Context, *empty.Empty) (*pb.Ted, error) {
 				}
 
 				node.LsPrefixes = append(node.LsPrefixes, prefix)
+			}
+
+			for _, lsPrefixV6 := range lsNode.PrefixesV6 {
+				prefixV6 := &pb.LsPrefixV6{
+					Prefix: lsPrefixV6.Prefix.String(),
+				}
+				node.LsPrefixesV6 = append(node.LsPrefixesV6, prefixV6)
+			}
+
+			for _, lsSrv6SID := range lsNode.SRv6SIDs {
+				srv6SID := &pb.LsSrv6SID{
+					EndpointBehavior: lsSrv6SID.EndpointBehavior,
+					ServiceType:      lsSrv6SID.ServiceType,
+					TrafficType:      lsSrv6SID.TrafficType,
+					OpaqueType:       lsSrv6SID.OpaqueType,
+					Value:            lsSrv6SID.Value,
+					Sids:             make([]*pb.Sid, 0, len(lsSrv6SID.Sids)),
+					MultiTopoIDs:     make([]*pb.MultiTopoID, 0, len(lsSrv6SID.MultiTopoIDs)),
+				}
+
+				for _, sid := range lsSrv6SID.Sids {
+					srv6SID.Sids = append(srv6SID.Sids, &pb.Sid{
+						Sid: sid,
+					})
+				}
+
+				for _, topoID := range lsSrv6SID.MultiTopoIDs {
+					srv6SID.MultiTopoIDs = append(srv6SID.MultiTopoIDs, &pb.MultiTopoID{
+						MultiTopoID: topoID,
+					})
+				}
+				node.LsSrv6SIDs = append(node.LsSrv6SIDs, srv6SID)
 			}
 
 			ret.LsNodes = append(ret.LsNodes, node)

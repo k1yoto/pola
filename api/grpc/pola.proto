@@ -126,10 +126,33 @@ message LsNode {
     uint32 srgbEnd = 6;
     repeated LsLink lsLinks = 7;
     repeated LsPrefix lsPrefixes = 8;
+    repeated LsPrefixV6 lsPrefixesV6 = 9;
+    repeated LsSrv6SID lsSrv6SIDs = 10;
 }
-
 
 message Ted {
     bool enable = 1;
     repeated  LsNode lsNodes = 2;
+}
+
+message LsPrefixV6 {
+    string prefix = 1;
+}
+
+message LsSrv6SID {
+    repeated Sid sids = 1;
+	uint32 endpointBehavior = 2;
+	repeated MultiTopoID multiTopoIDs = 3;
+	uint32 serviceType = 4;
+	uint32 trafficType = 5;
+	uint32 opaqueType = 6;
+	bytes value = 7;
+}
+
+message Sid {
+    string sid = 1;
+}
+
+message MultiTopoID {
+    uint32 multiTopoID = 1;
 }
