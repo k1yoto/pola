@@ -87,6 +87,15 @@ func print(jsonFlag bool) error {
 				}
 				tmpNode["prefixes"] = prefixes
 
+				prefixesV6 := []map[string]interface{}{}
+				for _, prefix := range node.PrefixesV6 {
+					tmpPrefix := map[string]interface{}{
+						"prefix": prefix.Prefix.String(),
+					}
+					prefixesV6 = append(prefixesV6, tmpPrefix)
+				}
+				tmpNode["prefixesV6"] = prefixesV6
+
 				srv6SIDs := []map[string]interface{}{}
 				for _, srv6SID := range node.SRv6SIDs {
 					tmpSrv6SID := map[string]interface{}{
