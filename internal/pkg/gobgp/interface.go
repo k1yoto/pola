@@ -169,12 +169,14 @@ func getLsNodeNLRI(typedLinkStateNlri *api.LsNodeNLRI, pathAttrs []*anypb.Any) (
 		lsNode.IsisAreaID = strIsisArea
 		lsNode.Hostname = bgplsAttr.GetNode().GetName()
 
-		srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
-		if len(srCapabilities) != 1 {
-			return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
-		} else {
-			lsNode.SrgbBegin = srCapabilities[0].GetBegin()
-			lsNode.SrgbEnd = srCapabilities[0].GetEnd()
+		if bgplsAttr.GetNode().GetSrCapabilities() != nil {
+			srCapabilities := bgplsAttr.GetNode().GetSrCapabilities().GetRanges()
+			if len(srCapabilities) != 1 {
+				return nil, fmt.Errorf("expected 1 SR Capability TLV, got: %d", len(srCapabilities))
+			} else {
+				lsNode.SrgbBegin = srCapabilities[0].GetBegin()
+				lsNode.SrgbEnd = srCapabilities[0].GetEnd()
+			}
 		}
 	}
 
@@ -185,14 +187,31 @@ func getLsLinkNLRI(typedLinkStateNlri *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 	localNode := table.NewLsNode(typedLinkStateNlri.GetLocalNode().GetAsn(), typedLinkStateNlri.GetLocalNode().GetIgpRouterId())
 	remoteNode := table.NewLsNode(typedLinkStateNlri.GetRemoteNode().GetAsn(), typedLinkStateNlri.GetRemoteNode().GetIgpRouterId())
 
-	localIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse local IP address: %v", err)
+	var err error
+	var localIP netip.Addr
+	if typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4() != "" {
+		localIP, err = netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv4())
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse local IPv4 address: %v", err)
+		}
+	} else {
+		localIP, err = netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetInterfaceAddrIpv6())
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse local IPv6 address: %v", err)
+		}
 	}
 
-	remoteIP, err := netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse remote IP address: %v", err)
+	var remoteIP netip.Addr
+	if typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4() != "" {
+		remoteIP, err = netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv4())
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse remote IPv4 address: %v", err)
+		}
+	} else {
+		remoteIP, err = netip.ParseAddr(typedLinkStateNlri.GetLinkDescriptor().GetNeighborAddrIpv6())
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse remote IPv6 address: %v", err)
+		}
 	}
 
 	lsLink := table.NewLsLink(localNode, remoteNode)
@@ -217,7 +236,9 @@ func getLsLinkNLRI(typedLinkStateNlri *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 			lsLink.Metrics = append(lsLink.Metrics, table.NewMetric(table.MetricType(table.TE_METRIC), teMetric))
 		}
 
-		lsLink.AdjSid = bgplsAttr.GetLink().GetSrAdjacencySid()
+		if bgplsAttr.GetLink().GetSrAdjacencySid() != 0 {
+			lsLink.AdjSid = bgplsAttr.GetLink().GetSrAdjacencySid()
+		}
 	}
 
 	return lsLink, nil
@@ -361,8 +382,8 @@ func getLsSrv6SIDNLRIList(lsSRv6SIDNlri *api.LsSrv6SIDNLRI, pathAttrs []*anypb.A
 		}
 
 		switch typedPathAttr := typedPathAttr.(type) {
-		case *api.SRv6EndPointBehavior:
-			endpointBehavior = uint32(typedPathAttr.GetBehavior())
+		case *api.LsAttribute:
+			// ToDO: Handle LsAttribute for SRv6 SID
 		case *api.MpReachNLRIAttribute:
 			for _, nlri := range typedPathAttr.GetNlris() {
 				typedNlri, err := nlri.UnmarshalNew()
