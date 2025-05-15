@@ -52,12 +52,7 @@ func main() {
 		for _, link := range node.GetLsLinks() {
 			fmt.Printf("link info: %#v\n", link)
 		}
-		for _, prefixV6 := range node.GetLsPrefixesV6() {
-			fmt.Printf("prefixV6 info: %#v\n", prefixV6)
-		}
-		for _, srv6SID := range node.GetLsSrv6SIDs() {
-			fmt.Printf("srv6SID info: %#v\n", srv6SID)
-		}
+
 		fmt.Println()
 	}
 }
