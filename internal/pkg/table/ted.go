@@ -12,23 +12,18 @@ import (
 	"strconv"
 )
 
-type LsTed struct {
+type LsTED struct {
 	ID    int
 	Nodes map[uint32]map[string]*LsNode // { ASN1: {"NodeID1": node1, "NodeID2": node2}, ASN2: {"NodeID3": node3, "NodeID4": node4}}
 }
 
-func (ted *LsTed) Update(tedElems []TedElem) {
-	// check Before State Update TED
-	fmt.Printf("Before State Update TED: %v\n", ted)
+func (ted *LsTED) Update(tedElems []TEDElem) {
 	for _, tedElem := range tedElems {
-		tedElem.UpdateTed(ted)
+		tedElem.UpdateTED(ted)
 	}
-	// check After State Update TED
-	fmt.Printf("After State Update TED: %v\n", ted)
-	ted.Print()
 }
 
-func (ted *LsTed) Print() {
+func (ted *LsTED) Print() {
 	for _, nodes := range ted.Nodes {
 		nodeCnt := 1
 		for nodeID, node := range nodes {
@@ -44,10 +39,7 @@ func (ted *LsTed) Print() {
 					fmt.Printf("      index: %d\n", prefix.SidIndex)
 				}
 			}
-			fmt.Printf("  PrefixesV6:\n")
-			for _, prefix := range node.PrefixesV6 {
-				fmt.Printf("    %s\n", prefix.Prefix.String())
-			}
+
 			fmt.Printf("  Links:\n")
 			for _, link := range node.Links {
 				fmt.Printf("    Local: %s Remote: %s\n", link.LocalIP.String(), link.RemoteIP.String())
@@ -75,12 +67,12 @@ func (ted *LsTed) Print() {
 	}
 }
 
-type TedElem interface {
-	UpdateTed(ted *LsTed)
+type TEDElem interface {
+	UpdateTED(ted *LsTED)
 }
 
 type LsNode struct {
-	Asn        uint32 // primary key, in MP_REACH_NLRI Attr
+	ASN        uint32 // primary key, in MP_REACH_NLRI Attr
 	RouterID   string // primary key, in MP_REACH_NLRI Attr
 	IsisAreaID string // in BGP-LS Attr
 	Hostname   string // in BGP-LS Attr
@@ -88,13 +80,12 @@ type LsNode struct {
 	SrgbEnd    uint32 // in BGP-LS Attr
 	Links      []*LsLink
 	Prefixes   []*LsPrefixV4
-	PrefixesV6 []*LsPrefixV6
 	SRv6SIDs   []*LsSrv6SID
 }
 
 func NewLsNode(asn uint32, nodeID string) *LsNode {
 	return &LsNode{
-		Asn:      asn,
+		ASN:      asn,
 		RouterID: nodeID,
 	}
 }
@@ -126,8 +117,8 @@ func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	return netip.Addr{}, errors.New("node doesn't have a loopback address")
 }
 
-func (n *LsNode) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, n.Asn
+func (n *LsNode) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, n.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
@@ -173,22 +164,22 @@ func (l *LsLink) Metric(metricType MetricType) (uint32, error) {
 	return 0, fmt.Errorf("metric %s not defined", metricType)
 }
 
-func (l *LsLink) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, l.LocalNode.Asn
+func (l *LsLink) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, l.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][l.LocalNode.RouterID]; !ok {
-		nodes[asn][l.LocalNode.RouterID] = NewLsNode(l.LocalNode.Asn, l.LocalNode.RouterID)
+		nodes[asn][l.LocalNode.RouterID] = NewLsNode(l.LocalNode.ASN, l.LocalNode.RouterID)
 	}
 
-	if _, ok := nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID]; !ok {
-		nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.Asn, l.RemoteNode.RouterID)
+	if _, ok := nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID]; !ok {
+		nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID] = NewLsNode(l.RemoteNode.ASN, l.RemoteNode.RouterID)
 	}
 
-	l.LocalNode, l.RemoteNode = nodes[asn][l.LocalNode.RouterID], nodes[l.RemoteNode.Asn][l.RemoteNode.RouterID]
+	l.LocalNode, l.RemoteNode = nodes[asn][l.LocalNode.RouterID], nodes[l.RemoteNode.ASN][l.RemoteNode.RouterID]
 
 	l.LocalNode.AddLink(l)
 }
@@ -205,15 +196,15 @@ func NewLsPrefixV4(localNode *LsNode) *LsPrefixV4 {
 	}
 }
 
-func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, lp.LocalNode.Asn
+func (lp *LsPrefixV4) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, lp.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][lp.LocalNode.RouterID]; !ok {
-		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.Asn, lp.LocalNode.RouterID)
+		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.ASN, lp.LocalNode.RouterID)
 	}
 
 	localNode := nodes[asn][lp.LocalNode.RouterID]
@@ -226,42 +217,10 @@ func (lp *LsPrefixV4) UpdateTed(ted *LsTed) {
 	localNode.Prefixes = append(localNode.Prefixes, lp)
 }
 
-type LsPrefixV6 struct {
-	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
-	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
-}
-
-func NewLsPrefixV6(localNode *LsNode) *LsPrefixV6 {
-	return &LsPrefixV6{
-		LocalNode: localNode,
-	}
-}
-
-func (lp *LsPrefixV6) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, lp.LocalNode.Asn
-
-	if _, ok := nodes[asn]; !ok {
-		nodes[asn] = make(map[string]*LsNode)
-	}
-
-	if _, ok := nodes[asn][lp.LocalNode.RouterID]; !ok {
-		nodes[asn][lp.LocalNode.RouterID] = NewLsNode(lp.LocalNode.Asn, lp.LocalNode.RouterID)
-	}
-
-	localNode := nodes[asn][lp.LocalNode.RouterID]
-	for _, pref := range localNode.Prefixes {
-		if pref.Prefix.String() == lp.Prefix.String() {
-			return
-		}
-	}
-
-	localNode.PrefixesV6 = append(localNode.PrefixesV6, lp)
-}
-
 type LsSrv6SID struct {
 	LocalNode        *LsNode  // primary key, in MP_REACH_NLRI Attr
 	Sids             []string // in LsSrv6SID Attr
-	EndpointBehavior uint32   // in BGP-LS Attr
+	EndpointBehavior uint32   // in srv6EndpointBehavior Attr
 	MultiTopoIDs     []uint32 // in LsSrv6SID Attr
 	ServiceType      uint32   // in LsSrv6SID Attr
 	TrafficType      uint32   // in LsSrv6SID Attr
@@ -275,15 +234,15 @@ func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
 	}
 }
 
-func (s *LsSrv6SID) UpdateTed(ted *LsTed) {
-	nodes, asn := ted.Nodes, s.LocalNode.Asn
+func (s *LsSrv6SID) UpdateTED(ted *LsTED) {
+	nodes, asn := ted.Nodes, s.LocalNode.ASN
 
 	if _, ok := nodes[asn]; !ok {
 		nodes[asn] = make(map[string]*LsNode)
 	}
 
 	if _, ok := nodes[asn][s.LocalNode.RouterID]; !ok {
-		nodes[asn][s.LocalNode.RouterID] = NewLsNode(s.LocalNode.Asn, s.LocalNode.RouterID)
+		nodes[asn][s.LocalNode.RouterID] = NewLsNode(s.LocalNode.ASN, s.LocalNode.RouterID)
 	}
 
 	s.LocalNode = nodes[asn][s.LocalNode.RouterID]
@@ -310,21 +269,21 @@ func NewMetric(metricType MetricType, value uint32) *Metric {
 type MetricType int
 
 const (
-	IGP_METRIC MetricType = iota
-	TE_METRIC
-	DELAY_METRIC
-	HOPCOUNT_METRIC
+	IGPMetric MetricType = iota
+	TEMetric
+	DelayMetric
+	HopcountMetric
 )
 
 func (m MetricType) String() string {
 	switch m {
-	case IGP_METRIC:
+	case IGPMetric:
 		return "IGP"
-	case TE_METRIC:
+	case TEMetric:
 		return "TE"
-	case DELAY_METRIC:
+	case DelayMetric:
 		return "DELAY"
-	case HOPCOUNT_METRIC:
+	case HopcountMetric:
 		return "HOPCOUNT"
 	default:
 		return "Unknown"
