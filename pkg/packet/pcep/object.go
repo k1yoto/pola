@@ -198,9 +198,7 @@ func (h *CommonObjectHeader) Serialize() []uint8 {
 		Flagbyte = Flagbyte | IFlagMask
 	}
 	buf = append(buf, Flagbyte)
-	objectLength := make([]uint8, 2)
-	binary.BigEndian.PutUint16(objectLength, h.ObjectLength)
-	buf = append(buf, objectLength...)
+	buf = append(buf, Uint16ToByteSlice(h.ObjectLength)...)
 	return buf
 }
 
@@ -1111,8 +1109,7 @@ func (o *SRv6EroSubobject) Serialize() []uint8 {
 		buf[3] = buf[3] | 0x01
 	}
 	reserved := make([]uint8, 2)
-	behavior := make([]uint8, 2)
-	binary.BigEndian.PutUint16(behavior, o.Segment.Behavior())
+	behavior := Uint16ToByteSlice(o.Segment.Behavior())
 	byteSid := o.Segment.Sid.AsSlice()
 
 	byteNAI := []uint8{}
@@ -1396,7 +1393,7 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				),
 			},
 			&UndefinedTLV{
-				Typ:    TLVSrPolicyCPathIDJuniper,
+				Typ:    TLVSRPolicyCPathIDJuniper,
 				Length: TLVSRPolicyCPathIDValueLength,
 				Value: []uint8{
 					0x00,             // protocol origin
@@ -1407,8 +1404,8 @@ func NewAssociationObject(srcAddr netip.Addr, dstAddr netip.Addr, color uint32, 
 				},
 			},
 			&UndefinedTLV{
-				Typ:    TLVSrPolicyCPathPreferenceJuniper,
-				Length: TLVSrPolicyCPathPreferenceValueLength,
+				Typ:    TLVSRPolicyCPathPreferenceJuniper,
+				Length: TLVSRPolicyCPathPreferenceValueLength,
 				Value:  Uint32ToByteSlice(preference),
 			},
 		}
@@ -1453,7 +1450,7 @@ func (o *AssociationObject) Color() uint32 {
 func (o *AssociationObject) Preference() uint32 {
 	for _, tlv := range o.TLVs {
 		if t, ok := tlv.(*UndefinedTLV); ok {
-			if t.Type() == TLVSrPolicyCPathPreferenceJuniper {
+			if t.Type() == TLVSRPolicyCPathPreferenceJuniper {
 				return uint32(binary.BigEndian.Uint32(t.Value))
 			}
 		} else if t, ok := tlv.(*SRPolicyCandidatePathPreference); ok {
