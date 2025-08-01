@@ -190,7 +190,7 @@ func getLsLinkNLRI(typedLinkStateNLRI *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse local IPv4 address: %v", err)
 		}
-	} else {
+	} else if typedLinkStateNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6() != "" {
 		localIP, err = netip.ParseAddr(typedLinkStateNLRI.GetLinkDescriptor().GetInterfaceAddrIpv6())
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse local IPv6 address: %v", err)
@@ -203,7 +203,7 @@ func getLsLinkNLRI(typedLinkStateNLRI *api.LsLinkNLRI, pathAttrs []*anypb.Any) (
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse remote IPv4 address: %v", err)
 		}
-	} else {
+	} else if typedLinkStateNLRI.GetLinkDescriptor().GetNeighborAddrIpv6() != "" {
 		remoteIP, err = netip.ParseAddr(typedLinkStateNLRI.GetLinkDescriptor().GetNeighborAddrIpv6())
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse remote IPv6 address: %v", err)

@@ -208,14 +208,17 @@ func createLsLink(localNode, remoteNode *table.LsNode, link *pb.LsLink) (*table.
 		RemoteNode: remoteNode,
 		AdjSid:     link.GetAdjSid(),
 	}
-	var err error
-	lsLink.LocalIP, err = netip.ParseAddr(link.GetLocalIp())
-	if err != nil {
-		return nil, err
+	localIP := link.GetLocalIp()
+	if localIP != "" {
+		if addr, err := netip.ParseAddr(localIP); err == nil {
+			lsLink.LocalIP = addr
+		}
 	}
-	lsLink.RemoteIP, err = netip.ParseAddr(link.GetRemoteIp())
-	if err != nil {
-		return nil, err
+	remoteIP := link.GetRemoteIp()
+	if remoteIP != "" {
+		if addr, err := netip.ParseAddr(remoteIP); err == nil {
+			lsLink.RemoteIP = addr
+		}
 	}
 	for _, metricInfo := range link.GetMetrics() {
 		metric, err := createMetric(metricInfo)
