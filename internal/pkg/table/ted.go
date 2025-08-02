@@ -132,7 +132,7 @@ func (n *LsNode) NodeSegment() (Segment, error) {
 
 func (n *LsNode) LoopbackAddr() (netip.Addr, error) {
 	for _, prefix := range n.Prefixes {
-		if prefix.SidIndex != 0 {
+		if prefix.SidIndex != 0 || prefix.Prefix.Bits() == 128 {
 			return prefix.Prefix.Addr(), nil
 		}
 	}

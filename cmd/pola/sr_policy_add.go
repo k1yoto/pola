@@ -108,14 +108,14 @@ func addSRPolicy(input InputFormat, jsonFlag bool, explicitPathFlag bool) error 
 }
 
 func addSRPolicyWithExplicitPath(input InputFormat) error {
-	if !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
+	if input.ASN == 0 || !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
 		sampleInput := "srPolicy:\n" +
-			"  pcepSessionAddr: 192.0.2.1\n" +
-			"  srcAddr: 192.0.2.1\n" +
-			"  dstAddr: 192.0.2.2\n" +
+			"  pcep_session_addr: 192.0.2.1\n" +
+			"  src_addr: 192.0.2.1\n" +
+			"  dst_addr: 192.0.2.2\n" +
 			"  name: name\n" +
 			"  color: 100\n" +
-			"  segmentList:\n" +
+			"  segment_list:\n" +
 			"    - sid: 16003\n" +
 			"    - sid: 16002\n\n"
 
@@ -146,6 +146,7 @@ func addSRPolicyWithExplicitPath(input InputFormat) error {
 
 	request := &pb.CreateSRPolicyRequest{
 		SrPolicy: srPolicy,
+		Asn:      input.ASN,
 	}
 	if err := grpc.CreateSRPolicy(client, request); err != nil {
 		return err
@@ -158,9 +159,9 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 	sampleInputDynamic := "#case: dynamic path\n" +
 		"asn: 65000\n" +
 		"srPolicy:\n" +
-		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterID: 0000.0aff.0001\n" +
-		"  dstRouterID: 0000.0aff.0004\n" +
+		"  pcep_session_addr: 192.0.2.1\n" +
+		"  src_router_id: 0000.0aff.0001\n" +
+		"  dst_router_id: 0000.0aff.0004\n" +
 		"  name: name\n" +
 		"  color: 100\n" +
 		"  type: dynamic\n" +
@@ -168,13 +169,13 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 	sampleInputExplicit := "#case: explicit path\n" +
 		"asn: 65000\n" +
 		"srPolicy:\n" +
-		"  pcepSessionAddr: 192.0.2.1\n" +
-		"  srcRouterID: 0000.0aff.0001\n" +
-		"  dstRouterID: 0000.0aff.0002\n" +
+		"  pcep_session_addr: 192.0.2.1\n" +
+		"  src_router_id: 0000.0aff.0001\n" +
+		"  dst_router_id: 0000.0aff.0002\n" +
 		"  name: name\n" +
 		"  color: 100\n" +
 		"  type: explicit\n" +
-		"  segmentList:\n" +
+		"  segment_list:\n" +
 		"    - sid: 16003\n" +
 		"    - sid: 16002\n"
 	if input.ASN == 0 || !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || input.SRPolicy.SrcRouterID == "" || input.SRPolicy.DstRouterID == "" {
@@ -236,8 +237,9 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 		Metric:          metric,
 	}
 	inputData := &pb.CreateSRPolicyRequest{
-		SrPolicy: srPolicy,
-		Asn:      input.ASN,
+		SrPolicy:    srPolicy,
+		Asn:         input.ASN,
+		PathCompute: true,
 	}
 	if err := grpc.CreateSRPolicy(client, inputData); err != nil {
 		return fmt.Errorf("gRPC Server Error: %s", err.Error())
