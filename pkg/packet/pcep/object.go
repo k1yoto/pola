@@ -1226,6 +1226,39 @@ func (o *EndpointsObject) Serialize() ([]uint8, error) {
 	return byteEndpointsObject, nil
 }
 
+func (o *EndpointsObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
+	o.ObjectType = objectType
+
+	switch objectType {
+	case ObjectTypeEndpointIPv4:
+		if len(objectBody) < 8 {
+			return fmt.Errorf("insufficient data for IPv4 endpoints: expected 8 bytes, got %d", len(objectBody))
+		}
+		var ok bool
+		if o.SrcAddr, ok = netip.AddrFromSlice(objectBody[0:4]); !ok {
+			return fmt.Errorf("failed to parse source IPv4 address")
+		}
+		if o.DstAddr, ok = netip.AddrFromSlice(objectBody[4:8]); !ok {
+			return fmt.Errorf("failed to parse destination IPv4 address")
+		}
+	case ObjectTypeEndpointIPv6:
+		if len(objectBody) < 32 {
+			return fmt.Errorf("insufficient data for IPv6 endpoints: expected 32 bytes, got %d", len(objectBody))
+		}
+		var ok bool
+		if o.SrcAddr, ok = netip.AddrFromSlice(objectBody[0:16]); !ok {
+			return fmt.Errorf("failed to parse source IPv6 address")
+		}
+		if o.DstAddr, ok = netip.AddrFromSlice(objectBody[16:32]); !ok {
+			return fmt.Errorf("failed to parse destination IPv6 address")
+		}
+	default:
+		return fmt.Errorf("unsupported endpoints object type: %d", objectType)
+	}
+
+	return nil
+}
+
 func (o EndpointsObject) Len() (uint16, error) {
 	var length uint16
 	if o.SrcAddr.Is4() && o.DstAddr.Is4() {

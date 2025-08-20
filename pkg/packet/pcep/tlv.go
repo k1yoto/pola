@@ -368,12 +368,18 @@ func (tlv *SymbolicPathName) DecodeFromBytes(data []byte) error {
 	}
 
 	nameLen := binary.BigEndian.Uint16(data[2:4])
-	totalLength := TLVHeaderLength + int(nameLen)
-	if len(data) != totalLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SymbolicPathName", totalLength, len(data))
+
+	nameEndIndex := TLVHeaderLength + int(nameLen)
+	padding := (4 - (nameLen % 4)) % 4 // Calculate padding for 4-byte alignment
+	actualTLVLength := nameEndIndex + int(padding)
+
+	if len(data) < actualTLVLength {
+		return fmt.Errorf("data too short for symbolic path name: expected at least %d bytes, but got %d bytes", actualTLVLength, len(data))
 	}
 
-	tlv.Name = string(data[TLVHeaderLength:totalLength])
+	tlvData := data[:actualTLVLength]
+
+	tlv.Name = string(tlvData[TLVHeaderLength:nameEndIndex])
 	if !utf8.Valid([]byte(tlv.Name)) {
 		return fmt.Errorf("invalid UTF-8 sequence in SymbolicPathName")
 	}
@@ -1153,7 +1159,7 @@ func (tlv *Color) Serialize() []byte {
 	buf = append(buf, typ...)
 
 	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, uint16(TLVColor))
+	binary.BigEndian.PutUint16(length, TLVColorValueLength) // Use actual data length, not TLV type
 	buf = append(buf, length...)
 
 	color := make([]byte, 4)

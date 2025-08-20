@@ -272,6 +272,64 @@ func NewStateReport() (*StateReport, error) {
 	return sr, nil
 }
 
+func (r *StateReport) Serialize() ([]uint8, error) {
+	var result []uint8
+
+	// SRP Object (optional, include only if SrpID != 0)
+	if r.SrpObject != nil && r.SrpObject.SrpID != 0 {
+		byteSrpObject := r.SrpObject.Serialize()
+		result = append(result, byteSrpObject...)
+	}
+
+	// LSP Object (mandatory)
+	if r.LSPObject != nil {
+		byteLSPObject := r.LSPObject.Serialize()
+		result = append(result, byteLSPObject...)
+	}
+
+	// ERO Object (optional, include only if it has subobjects)
+	if r.EroObject != nil && len(r.EroObject.EroSubobjects) > 0 {
+		byteEroObject, err := r.EroObject.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, byteEroObject...)
+	}
+
+	// LSPA Object (optional)
+	if r.LSPAObject != nil && r.LSPAObject.SetupPriority != 0 {
+		byteLSPAObject := r.LSPAObject.Serialize()
+		result = append(result, byteLSPAObject...)
+	}
+
+	// Metric Objects (optional)
+	for _, metricObj := range r.MetricObjects {
+		if metricObj != nil {
+			byteMetricObject := metricObj.Serialize()
+			result = append(result, byteMetricObject...)
+		}
+	}
+
+	// Association Object (optional)
+	if r.AssociationObject != nil && r.AssociationObject.AssocType != 0 {
+		byteAssociationObject, err := r.AssociationObject.Serialize()
+		if err != nil {
+			return nil, err
+		}
+		result = append(result, byteAssociationObject...)
+	}
+
+	// Vendor Information Object (optional)
+	if r.VendorInformationObject != nil && r.VendorInformationObject.EnterpriseNumber != 0 {
+		byteVendorInformationObject := r.VendorInformationObject.Serialize()
+		result = append(result, byteVendorInformationObject...)
+	}
+
+	// TODO: Handle Bandwidth Objects
+
+	return result, nil
+}
+
 func (r *StateReport) decodeBandwidthObject(objectType ObjectType, objectBody []uint8) error {
 	bandwidthObject := &BandwidthObject{}
 	if err := bandwidthObject.DecodeFromBytes(objectType, objectBody); err != nil {
@@ -374,6 +432,26 @@ func (m *PCRptMessage) DecodeFromBytes(messageBody []uint8) error {
 	return nil
 }
 
+func (m *PCRptMessage) Serialize() ([]uint8, error) {
+	var messageBody []uint8
+
+	for _, stateReport := range m.StateReports {
+		if stateReport != nil {
+			serializedStateReport, err := stateReport.Serialize()
+			if err != nil {
+				return nil, err
+			}
+			messageBody = append(messageBody, serializedStateReport...)
+		}
+	}
+
+	messageLength := CommonHeaderLength + uint16(len(messageBody))
+	commonHeader := NewCommonHeader(MessageTypeReport, messageLength)
+	byteCommonHeader := commonHeader.Serialize()
+	result := append(byteCommonHeader, messageBody...)
+	return result, nil
+}
+
 func NewPCRptMessage() *PCRptMessage {
 	return &PCRptMessage{
 		StateReports: []*StateReport{},
@@ -388,6 +466,59 @@ type PCInitiateMessage struct {
 	EroObject               *EroObject
 	AssociationObject       *AssociationObject
 	VendorInformationObject *VendorInformationObject
+}
+
+func (m *PCInitiateMessage) DecodeFromBytes(messageBody []uint8) error {
+	for len(messageBody) > 0 {
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+			return err
+		}
+
+		switch commonObjectHeader.ObjectClass {
+		case ObjectClassSRP:
+			srpObject := &SrpObject{}
+			if err := srpObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.SrpObject = srpObject
+		case ObjectClassLSP:
+			lspObject := &LSPObject{}
+			if err := lspObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				fmt.Printf("ERROR! Decode LSP Object: %v\n", err)
+				return err
+			}
+			m.LSPObject = lspObject
+		case ObjectClassEndpoints:
+			endpointsObject := &EndpointsObject{}
+			if err := endpointsObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.EndpointsObject = endpointsObject
+		case ObjectClassERO:
+			eroObject := &EroObject{}
+			if err := eroObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.EroObject = eroObject
+		case ObjectClassAssociation:
+			associationObject := &AssociationObject{}
+			if err := associationObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.AssociationObject = associationObject
+		case ObjectClassVendorInformation:
+			vendorInformationObject := &VendorInformationObject{}
+			if err := vendorInformationObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.VendorInformationObject = vendorInformationObject
+		default:
+			// Skip unknown objects
+		}
+		messageBody = messageBody[commonObjectHeader.ObjectLength:]
+	}
+	return nil
 }
 
 func (m *PCInitiateMessage) Serialize() ([]uint8, error) {
@@ -520,6 +651,40 @@ type PCUpdMessage struct {
 	SrpObject *SrpObject
 	LSPObject *LSPObject
 	EroObject *EroObject
+}
+
+func (m *PCUpdMessage) DecodeFromBytes(messageBody []uint8) error {
+	for len(messageBody) > 0 {
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+			return err
+		}
+
+		switch commonObjectHeader.ObjectClass {
+		case ObjectClassSRP:
+			srpObject := &SrpObject{}
+			if err := srpObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.SrpObject = srpObject
+		case ObjectClassLSP:
+			lspObject := &LSPObject{}
+			if err := lspObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.LSPObject = lspObject
+		case ObjectClassERO:
+			eroObject := &EroObject{}
+			if err := eroObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return err
+			}
+			m.EroObject = eroObject
+		default:
+			// Skip unknown objects
+		}
+		messageBody = messageBody[commonObjectHeader.ObjectLength:]
+	}
+	return nil
 }
 
 func (m *PCUpdMessage) Serialize() ([]uint8, error) {
