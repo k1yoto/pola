@@ -295,19 +295,20 @@ const (
 	ObjectTypeRPRP ObjectType = 0x01
 )
 
-// RP (Request Parameters) Object (RFC5440 7.4)
+// RP (Request Parameters) Object (RFC5440 7.4, RFC8685 3.3)
 type RPObject struct {
 	ObjectType ObjectType
-	OFlag      bool   // Strict/Loose bit
-	BFlag      bool   // Bi-directional bit
-	RFlag      bool   // Reoptimization bit
-	Priority   uint8  // 3 bits
-	RequestID  uint32 // Request ID-number
+	OFlag      bool             // Strict/Loose bit
+	BFlag      bool             // Bi-directional bit
+	RFlag      bool             // Reoptimization bit
+	Priority   uint8            // 3 bits
+	RequestID  uint32           // Request ID-number
+	TLVs       []TLVInterface   // Optional TLVs (RFC8685)
 }
 
 func (o *RPObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
 	if len(objectBody) < 8 {
-		return fmt.Errorf("RP object body too short: expected 8 bytes, got %d", len(objectBody))
+		return fmt.Errorf("RP object body too short: expected at least 8 bytes, got %d", len(objectBody))
 	}
 
 	o.ObjectType = objectType
@@ -321,11 +322,26 @@ func (o *RPObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) er
 	// Clear flag bits from RequestID
 	o.RequestID = o.RequestID & 0x00FFFFFF
 
+	// Process optional TLVs (RFC8685 3.3)
+	if len(objectBody) > 8 {
+		tlvs, err := DecodeTLVs(objectBody[8:])
+		if err != nil {
+			return fmt.Errorf("failed to decode TLVs in RP object: %w", err)
+		}
+		o.TLVs = tlvs
+	}
+
 	return nil
 }
 
 func (o *RPObject) Serialize() []uint8 {
-	rpObjectLength := uint16(8 + commonObjectHeaderLength)
+	// Calculate TLV length
+	tlvLength := uint16(0)
+	for _, tlv := range o.TLVs {
+		tlvLength += tlv.Len()
+	}
+
+	rpObjectLength := uint16(8 + commonObjectHeaderLength) + tlvLength
 	rpObjectHeader := NewCommonObjectHeader(ObjectClassRP, o.ObjectType, rpObjectLength)
 	byteRPObjectHeader := rpObjectHeader.Serialize()
 
@@ -347,15 +363,25 @@ func (o *RPObject) Serialize() []uint8 {
 	requestIDWithFlags := (uint32(flags) << 24) | (o.RequestID & 0x00FFFFFF)
 	binary.BigEndian.PutUint32(buf[4:8], requestIDWithFlags)
 
-	byteRPObject := AppendByteSlices(byteRPObjectHeader, buf)
+	// Serialize TLVs
+	tlvBytes := []byte{}
+	for _, tlv := range o.TLVs {
+		tlvBytes = append(tlvBytes, tlv.Serialize()...)
+	}
+
+	byteRPObject := AppendByteSlices(byteRPObjectHeader, buf, tlvBytes)
 	return byteRPObject
 }
 
 func (o *RPObject) Len() uint16 {
-	return 8 + commonObjectHeaderLength
+	tlvLength := uint16(0)
+	for _, tlv := range o.TLVs {
+		tlvLength += tlv.Len()
+	}
+	return 8 + commonObjectHeaderLength + tlvLength
 }
 
-func NewRPObject(requestID uint32, priority uint8, loose bool, bidirectional bool, reoptimization bool) (*RPObject, error) {
+func NewRPObject(requestID uint32, priority uint8, loose bool, bidirectional bool, reoptimization bool, tlvs []TLVInterface) (*RPObject, error) {
 	if priority > 7 {
 		return nil, fmt.Errorf("priority must be 0-7, got %d", priority)
 	}
@@ -367,6 +393,7 @@ func NewRPObject(requestID uint32, priority uint8, loose bool, bidirectional boo
 		RFlag:      reoptimization,
 		Priority:   priority,
 		RequestID:  requestID,
+		TLVs:       tlvs,
 	}, nil
 }
 

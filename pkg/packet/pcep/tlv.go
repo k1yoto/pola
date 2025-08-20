@@ -195,6 +195,8 @@ const (
 	TLVSRPolicyCPathIDValueLength           uint16 = 28
 	TLVSRPolicyCPathPreferenceValueLength   uint16 = 4
 	TLVColorValueLength                     uint16 = 4
+	TLVHPCECapabilityValueLength            uint16 = 4
+	TLVHPCEFlagValueLength                  uint16 = 4
 )
 
 // Juniper specific TLV (deprecated)
@@ -236,6 +238,9 @@ var tlvMap = map[TLVType]func() TLVInterface{
 	TLVPathSetupTypeCapability: func() TLVInterface { return &PathSetupTypeCapability{} },
 	TLVAssocTypeList:           func() TLVInterface { return &AssocTypeList{} },
 	TLVColor:                   func() TLVInterface { return &Color{} },
+	TLVHPCECapability:          func() TLVInterface { return &HPCECapability{} },
+	TLVDomainID:                func() TLVInterface { return &DomainID{} },
+	TLVHPCEFlag:                func() TLVInterface { return &HPCEFlag{} },
 }
 
 type StatefulPCECapability struct {
@@ -1282,4 +1287,226 @@ func DecodeTLVs(data []byte) ([]TLVInterface, error) {
 	}
 
 	return tlvs, nil
+}
+
+// H-PCE Capability TLV (RFC 8685 Section 3.1)
+type HPCECapability struct {
+	ParentPCERequest bool // bit 31 (P-bit)
+}
+
+const (
+	ParentPCERequestBit uint32 = 0x01
+)
+
+const (
+	HPCECapabilityFlagsIndex = 3
+)
+
+func (tlv *HPCECapability) DecodeFromBytes(data []byte) error {
+	expectedLength := TLVHeaderLength + int(TLVHPCECapabilityValueLength)
+	if len(data) != expectedLength {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for HPCECapability", expectedLength, len(data))
+	}
+
+	flags := uint32(data[TLVHeaderLength+HPCECapabilityFlagsIndex])
+	tlv.ParentPCERequest = flags&ParentPCERequestBit != 0
+
+	return nil
+}
+
+func (tlv *HPCECapability) Serialize() []byte {
+	return AppendByteSlices(
+		Uint16ToByteSlice(uint16(tlv.Type())),
+		Uint16ToByteSlice(TLVHPCECapabilityValueLength),
+		Uint32ToByteSlice(tlv.SetFlags()),
+	)
+}
+
+func (tlv *HPCECapability) SetFlags() uint32 {
+	var flags uint32
+	flags = SetBit(flags, ParentPCERequestBit, tlv.ParentPCERequest)
+	return flags
+}
+
+func (tlv *HPCECapability) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddBool("parentPCERequest", tlv.ParentPCERequest)
+	return nil
+}
+
+func (tlv *HPCECapability) Type() TLVType {
+	return TLVHPCECapability
+}
+
+func (tlv *HPCECapability) Len() uint16 {
+	return TLVHeaderLength + TLVHPCECapabilityValueLength
+}
+
+func (tlv *HPCECapability) CapStrings() []string {
+	var ret []string
+	if tlv.ParentPCERequest {
+		ret = append(ret, "H-PCE")
+	}
+	return ret
+}
+
+func NewHPCECapability(parentPCERequest bool) *HPCECapability {
+	return &HPCECapability{
+		ParentPCERequest: parentPCERequest,
+	}
+}
+
+// Domain-ID TLV (RFC 8685 Section 3.2)
+type DomainType uint8
+
+const (
+	DomainType2ByteAS    DomainType = 1
+	DomainType4ByteAS    DomainType = 2
+	DomainTypeOSPFAreaID DomainType = 3
+	DomainTypeISISAreaID DomainType = 4
+)
+
+type DomainID struct {
+	DomainType DomainType
+	DomainID   []byte
+}
+
+func (tlv *DomainID) DecodeFromBytes(data []byte) error {
+	if len(data) < TLVHeaderLength+4 {
+		return fmt.Errorf("data too short for DomainID TLV: expected at least %d bytes, got %d", TLVHeaderLength+4, len(data))
+	}
+
+	length := binary.BigEndian.Uint16(data[2:4])
+	if len(data) < int(TLVHeaderLength)+int(length) {
+		return fmt.Errorf("data too short for DomainID TLV: expected %d bytes, got %d", TLVHeaderLength+int(length), len(data))
+	}
+
+	tlv.DomainType = DomainType(data[TLVHeaderLength])
+
+	domainIDStart := TLVHeaderLength + 4 // Skip domain type + 3 reserved bytes
+	domainIDLength := int(length) - 4    // Subtract the 4 bytes for domain type and reserved
+
+	if domainIDLength > 0 {
+		tlv.DomainID = make([]byte, domainIDLength)
+		copy(tlv.DomainID, data[domainIDStart:domainIDStart+domainIDLength])
+	}
+
+	return nil
+}
+
+func (tlv *DomainID) Serialize() []byte {
+	valueLength := uint16(4 + len(tlv.DomainID)) // 4 bytes for domain type + reserved
+	padding := (4 - (valueLength % 4)) % 4       // Calculate padding for 4-byte alignment
+
+	buf := AppendByteSlices(
+		Uint16ToByteSlice(uint16(tlv.Type())),
+		Uint16ToByteSlice(valueLength),
+		[]byte{byte(tlv.DomainType)},
+		[]byte{0, 0, 0}, // 3 reserved bytes
+		tlv.DomainID,
+		make([]byte, padding), // Padding
+	)
+
+	return buf
+}
+
+func (tlv *DomainID) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddUint8("domainType", uint8(tlv.DomainType))
+	enc.AddString("domainID", fmt.Sprintf("%x", tlv.DomainID))
+	return nil
+}
+
+func (tlv *DomainID) Type() TLVType {
+	return TLVDomainID
+}
+
+func (tlv *DomainID) Len() uint16 {
+	valueLength := uint16(4 + len(tlv.DomainID)) // 4 bytes for domain type + reserved
+	padding := (4 - (valueLength % 4)) % 4       // Calculate padding for 4-byte alignment
+	return TLVHeaderLength + valueLength + padding
+}
+
+func (tlv *DomainID) CapStrings() []string {
+	return []string{"Domain-ID"}
+}
+
+func NewDomainID(domainType DomainType, domainID []byte) *DomainID {
+	return &DomainID{
+		DomainType: domainType,
+		DomainID:   domainID,
+	}
+}
+
+// H-PCE Flag TLV (RFC 8685 Section 3.3)
+type HPCEFlag struct {
+	DisallowDomainReentry bool // bit 30 (D-bit)
+	DomainSequence        bool // bit 31 (S-bit)
+}
+
+const (
+	DisallowDomainReentryBit uint32 = 0x02
+	DomainSequenceBit        uint32 = 0x01
+)
+
+const (
+	HPCEFlagFlagsIndex = 3
+)
+
+func (tlv *HPCEFlag) DecodeFromBytes(data []byte) error {
+	expectedLength := TLVHeaderLength + int(TLVHPCEFlagValueLength)
+	if len(data) != expectedLength {
+		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for HPCEFlag", expectedLength, len(data))
+	}
+
+	flags := uint32(data[TLVHeaderLength+HPCEFlagFlagsIndex])
+	tlv.DisallowDomainReentry = flags&DisallowDomainReentryBit != 0
+	tlv.DomainSequence = flags&DomainSequenceBit != 0
+
+	return nil
+}
+
+func (tlv *HPCEFlag) Serialize() []byte {
+	return AppendByteSlices(
+		Uint16ToByteSlice(uint16(tlv.Type())),
+		Uint16ToByteSlice(TLVHPCEFlagValueLength),
+		Uint32ToByteSlice(tlv.SetFlags()),
+	)
+}
+
+func (tlv *HPCEFlag) SetFlags() uint32 {
+	var flags uint32
+	flags = SetBit(flags, DisallowDomainReentryBit, tlv.DisallowDomainReentry)
+	flags = SetBit(flags, DomainSequenceBit, tlv.DomainSequence)
+	return flags
+}
+
+func (tlv *HPCEFlag) MarshalLogObject(enc zapcore.ObjectEncoder) error {
+	enc.AddBool("disallowDomainReentry", tlv.DisallowDomainReentry)
+	enc.AddBool("domainSequence", tlv.DomainSequence)
+	return nil
+}
+
+func (tlv *HPCEFlag) Type() TLVType {
+	return TLVHPCEFlag
+}
+
+func (tlv *HPCEFlag) Len() uint16 {
+	return TLVHeaderLength + TLVHPCEFlagValueLength
+}
+
+func (tlv *HPCEFlag) CapStrings() []string {
+	var ret []string
+	if tlv.DisallowDomainReentry {
+		ret = append(ret, "Disallow-Domain-Reentry")
+	}
+	if tlv.DomainSequence {
+		ret = append(ret, "Domain-Sequence")
+	}
+	return ret
+}
+
+func NewHPCEFlag(disallowDomainReentry, domainSequence bool) *HPCEFlag {
+	return &HPCEFlag{
+		DisallowDomainReentry: disallowDomainReentry,
+		DomainSequence:        domainSequence,
+	}
 }
