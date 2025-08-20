@@ -34,6 +34,15 @@ type PCEOptions struct {
 	USidMode  bool
 }
 
+type PCCOptions struct {
+	PCEAddr  string
+	PCCAddr  string
+	PCEPPort string
+	GRPCAddr string
+	GRPCPort string
+	USidMode bool
+}
+
 func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem) Error {
 	s := &Server{logger: logger}
 	if o.TEDEnable {
@@ -60,6 +69,35 @@ func NewPCE(o *PCEOptions, logger *zap.Logger, tedElemsChan chan []table.TEDElem
 	errChan := make(chan Error)
 	go func() {
 		if err := s.Serve(o.PCEPAddr, o.PCEPPort, o.USidMode); err != nil {
+			errChan <- Error{
+				Server: "pcep",
+				Error:  err,
+			}
+		}
+	}()
+
+	go func() {
+		grpcServer := grpc.NewServer()
+		apiServer := NewAPIServer(s, grpcServer, o.USidMode, logger)
+		if err := apiServer.Serve(o.GRPCAddr, o.GRPCPort); err != nil {
+			errChan <- Error{
+				Server: "grpc",
+				Error:  err,
+			}
+		}
+	}()
+
+	serverError := <-errChan
+	logger.Error("Server encountered an error", zap.String("server", serverError.Server), zap.Error(serverError.Error))
+	return serverError
+}
+
+func NewPCC(o *PCCOptions, logger *zap.Logger) Error {
+	s := &Server{logger: logger}
+	errChan := make(chan Error)
+
+	go func() {
+		if err := s.Connect(o.PCEAddr, o.PCCAddr, o.PCEPPort, o.USidMode); err != nil {
 			errChan <- Error{
 				Server: "pcep",
 				Error:  err,
@@ -129,6 +167,54 @@ func (s *Server) Serve(address string, port string, usidMode bool) error {
 		}()
 		sessionID++
 	}
+}
+
+func (s *Server) Connect(pceAddress string, pccAddress string, port string, usidMode bool) error {
+	pceAddr, err := netip.ParseAddr(pceAddress)
+	if err != nil {
+		return fmt.Errorf("failed to parse PCE address %s: %w", pceAddress, err)
+	}
+	pccAddr, err := netip.ParseAddr(pccAddress)
+	if err != nil {
+		return fmt.Errorf("failed to parse PCC address %s: %w", pccAddress, err)
+	}
+	p, err := strconv.Atoi(port)
+	if err != nil {
+		return fmt.Errorf("failed to convert port %s: %w", port, err)
+	}
+	if p > math.MaxUint16 {
+		return errors.New("invalid PCEP port")
+	}
+
+	pceAddrPort := netip.AddrPortFrom(pceAddr, uint16(p))
+	pccAddrPort := netip.AddrPortFrom(pccAddr, 0) // Use ephemeral port for source
+
+	// Create TCP connection to PCE
+	localAddr := net.TCPAddrFromAddrPort(pccAddrPort)
+	remoteAddr := net.TCPAddrFromAddrPort(pceAddrPort)
+
+	tcpConn, err := net.DialTCP("tcp", localAddr, remoteAddr)
+	if err != nil {
+		return fmt.Errorf("failed to connect to PCE %s from %s: %w", pceAddrPort.String(), pccAddr.String(), err)
+	}
+	defer func() {
+		if err := tcpConn.Close(); err != nil {
+			s.logger.Warn("failed to close TCP connection", zap.Error(err))
+		}
+	}()
+
+	sessionID := uint8(1)
+
+	ss := NewSession(sessionID, pceAddr, tcpConn, s.logger, s.ted)
+	ss.logger.Info("start PCEP session as PCC")
+
+	s.sessionList = append(s.sessionList, ss)
+
+	// Start session establishment as PCC
+	ss.EstablishedAsPCC()
+	s.closeSession(ss)
+	ss.logger.Info("close PCEP session")
+	return nil
 }
 
 func (s *Server) closeSession(session *Session) {
