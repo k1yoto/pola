@@ -71,34 +71,55 @@ func main() {
 		}
 	}()
 
-	// Prepare TED update tools
-	var tedElemsChan chan []table.TEDElem
-	if c.Global.TED.Enable {
-		switch c.Global.TED.Source {
-		case "gobgp":
-			tedElemsChan = startGoBGPUpdate(&c, logger)
-			if tedElemsChan == nil {
-				logger.Panic("GoBGP update channel is nil")
-				log.Panic("GoBGP update channel is nil")
+	switch c.Global.Mode {
+	case "pce":
+		// Prepare TED update tools
+		var tedElemsChan chan []table.TEDElem
+		if c.Global.TED.Enable {
+			switch c.Global.TED.Source {
+			case "gobgp":
+				tedElemsChan = startGoBGPUpdate(&c, logger)
+				if tedElemsChan == nil {
+					logger.Panic("GoBGP update channel is nil")
+					log.Panic("GoBGP update channel is nil")
+				}
+			default:
+				logger.Panic("Specified TED source is not defined")
+				log.Panic("specified TED source is not defined")
 			}
-		default:
-			logger.Panic("Specified TED source is not defined")
-			log.Panic("specified TED source is not defined")
 		}
-	}
 
-	// Start PCE server
-	o := &server.PCEOptions{
-		PCEPAddr:  c.Global.PCEP.Address,
-		PCEPPort:  c.Global.PCEP.Port,
-		GRPCAddr:  c.Global.GRPCServer.Address,
-		GRPCPort:  c.Global.GRPCServer.Port,
-		TEDEnable: c.Global.TED.Enable,
-		USidMode:  c.Global.USidMode,
-	}
-	if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
-		logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
-		log.Panicf("failed to start new server: %v", serverErr.Error)
+		// Start PCE server
+		o := &server.PCEOptions{
+			PCEPAddr:  c.Global.PCEP.Address,
+			PCEPPort:  c.Global.PCEP.Port,
+			GRPCAddr:  c.Global.GRPCServer.Address,
+			GRPCPort:  c.Global.GRPCServer.Port,
+			TEDEnable: c.Global.TED.Enable,
+			USidMode:  c.Global.USidMode,
+		}
+		if serverErr := server.NewPCE(o, logger, tedElemsChan); serverErr.Error != nil {
+			logger.Panic("Failed to start new server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
+			log.Panicf("failed to start new server: %v", serverErr.Error)
+		}
+	case "pcc":
+		// Start PCC client
+		fmt.Printf("PCE Address: %s, PCC Adress: %s\n", c.Global.PCC.PCEAddr, c.Global.PCC.PCCAddr)
+		o := &server.PCCOptions{
+			PCEAddr:  c.Global.PCC.PCEAddr,
+			PCCAddr:  c.Global.PCC.PCCAddr,
+			PCEPPort: c.Global.PCC.Port,
+			GRPCAddr: c.Global.GRPCServer.Address,
+			GRPCPort: c.Global.GRPCServer.Port,
+			USidMode: c.Global.USidMode,
+		}
+		if serverErr := server.NewPCC(o, logger); serverErr.Error != nil {
+			logger.Panic("Failed to start new PCC server", zap.String("server", serverErr.Server), zap.Error(serverErr.Error))
+			log.Panicf("failed to start new PCC server: %v", serverErr.Error)
+		}
+	default:
+		logger.Panic("Invalid mode specified", zap.String("mode", c.Global.Mode))
+		log.Panicf("invalid mode specified: %s", c.Global.Mode)
 	}
 }
 

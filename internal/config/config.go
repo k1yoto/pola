@@ -17,6 +17,12 @@ type PCEP struct {
 	Port    string `yaml:"port"`
 }
 
+type PCC struct {
+	PCEAddr string `yaml:"pce_addr"`
+	PCCAddr string `yaml:"pcc_addr"`
+	Port    string `yaml:"port"`
+}
+
 type GRPCServer struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
@@ -44,11 +50,13 @@ type TED struct {
 
 type Global struct {
 	PCEP       PCEP       `yaml:"pcep"`
+	PCC        PCC        `yaml:"pcc"`
 	GRPCServer GRPCServer `yaml:"grpc_server"`
 	Log        Log        `yaml:"log"`
 	TED        *TED       `yaml:"ted"`
 	GoBGP      GoBGP      `yaml:"gobgp"`
 	USidMode   bool       `yaml:"usid_mode"`
+	Mode       string     `yaml:"mode"`
 }
 
 type Config struct {
