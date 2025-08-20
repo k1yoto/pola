@@ -86,6 +86,60 @@ func (ss *Session) Established() {
 	}
 }
 
+func (ss *Session) EstablishedAsPCC() {
+	if err := ss.SendOpenAsPCC(); err != nil {
+		ss.logger.Debug("ERROR! Send OPEN Message", zap.Error(err))
+		return
+	}
+
+	// Receive OPEN response from PCE
+	if err := ss.ReceiveOpen(); err != nil {
+		ss.logger.Debug("ERROR! Receive OPEN Message", zap.Error(err))
+		return
+	}
+
+	// Send the initial keepalive message
+	if err := ss.SendKeepalive(); err != nil {
+		ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
+		return
+	}
+
+	// Send sync completion PCRpt message to mark session as synced
+	if err := ss.SendSyncCompletion(); err != nil {
+		ss.logger.Debug("ERROR! Send Sync Completion Message", zap.Error(err))
+		return
+	}
+
+	// Mark session as synced after sending sync completion
+	ss.isSynced = true
+
+	done := make(chan struct{})
+	defer close(done)
+
+	// Receive PCEP messages in a separate goroutine
+	go func() {
+		if err := ss.ReceivePCEPMessage(); err != nil {
+			ss.logger.Debug("ERROR! Receive PCEP Message", zap.Error(err))
+		}
+		done <- struct{}{}
+	}()
+
+	ticker := time.NewTicker(time.Duration(ss.keepAlive) * time.Second)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-done:
+			return
+		case <-ticker.C:
+			if err := ss.SendKeepalive(); err != nil {
+				ss.logger.Debug("ERROR! Send Keepalive Message", zap.Error(err))
+				done <- struct{}{}
+			}
+		}
+	}
+}
+
 func (ss *Session) sendPCEPMessage(message pcep.Message) error {
 	byteMessage, err := message.Serialize()
 	if err != nil {
@@ -193,6 +247,16 @@ func (ss *Session) ReceivePCEPMessage() error {
 			ss.logger.Debug("Received Keepalive")
 		case pcep.MessageTypeReport:
 			err = ss.handlePCRpt(commonHeader.MessageLength)
+			if err != nil {
+				return err
+			}
+		case pcep.MessageTypeLSPInitReq:
+			err = ss.handlePCInitiate(commonHeader.MessageLength)
+			if err != nil {
+				return err
+			}
+		case pcep.MessageTypeUpdate:
+			err = ss.handlePCUpdate(commonHeader.MessageLength)
 			if err != nil {
 				return err
 			}
@@ -459,6 +523,56 @@ func (ss *Session) SendOpen() error {
 	return ss.sendPCEPMessage(openMessage)
 }
 
+func (ss *Session) SendOpenAsPCC() error {
+	// Create PCC capabilities with STATEFUL-PCE-CAPABILITY TLV
+	statefulCapability := &pcep.StatefulPCECapability{
+		LSPUpdateCapability:            true,
+		IncludeDBVersion:               false,
+		LSPInstantiationCapability:     true,
+		TriggeredResync:                false,
+		DeltaLSPSyncCapability:         false,
+		TriggeredInitialSync:           false,
+		P2mpCapability:                 false,
+		P2mpLSPUpdateCapability:        false,
+		P2mpLSPInstantiationCapability: false,
+		LSPSchedulingCapability:        false,
+		PdLSPCapability:                false,
+		ColorCapability:                false,
+		PathRecomputationCapability:    false,
+		StrictPathCapability:           false,
+		Relax:                          false,
+	}
+
+	// Create PATH-SETUP-TYPE-CAPABILITY TLV with SRv6 support
+	pathSetupTypeCapability := &pcep.PathSetupTypeCapability{
+		PathSetupTypes: []pcep.Pst{pcep.PathSetupTypeSRv6TE},
+		SubTLVs:        []pcep.TLVInterface{},
+	}
+
+	// Create ASSOC-TYPE-LIST TLV with specified association types
+	assocTypeList := &pcep.AssocTypeList{
+		AssocTypes: []pcep.AssocType{
+			pcep.AssocTypeDisjointAssociation,                    // 0x0002
+			pcep.AssocTypePolicyAssociation,                      // 0x0003
+			pcep.AssocTypeDoubleSidedBidirectionalLSPAssociation, // 0x0005
+			pcep.AssocTypeSRPolicyAssociation,                    // 0x0006
+		},
+	}
+
+	pccCapabilities := []pcep.CapabilityInterface{statefulCapability, pathSetupTypeCapability, assocTypeList}
+
+	openMessage, err := pcep.NewOpenMessage(ss.sessionID, ss.keepAlive, pccCapabilities)
+	if err != nil {
+		return err
+	}
+	openMessage.OpenObject.Deadtime = 120
+	openMessage.OpenObject.Keepalive = 30
+	ss.keepAlive = openMessage.OpenObject.Keepalive
+	openMessage.OpenObject.Sid = 0
+	ss.logger.Debug("Send Open Message as PCC with STATEFUL-PCE-CAPABILITY, PATH-SETUP-TYPE-CAPABILITY, and ASSOC-TYPE-LIST TLVs")
+	return ss.sendPCEPMessage(openMessage)
+}
+
 func (ss *Session) SendPCInitiate(srPolicy table.SRPolicy, lspDelete bool) error {
 	pcinitiateMessage, err := pcep.NewPCInitiateMessage(ss.srpIDHead, srPolicy.Name, lspDelete, srPolicy.PlspID, srPolicy.SegmentList, srPolicy.Color, srPolicy.Preference, srPolicy.SrcAddr, srPolicy.DstAddr, pcep.VendorSpecific(ss.pccType))
 	if err != nil {
@@ -483,6 +597,210 @@ func (ss *Session) SendPCUpdate(srPolicy table.SRPolicy) error {
 		ss.srpIDHead++
 	}
 	return err
+}
+
+func (ss *Session) handlePCInitiate(length uint16) error {
+	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
+	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
+		return err
+	}
+
+	message := &pcep.PCInitiateMessage{}
+	if err := message.DecodeFromBytes(messageBodyBytes); err != nil {
+		ss.logger.Warn("Failed to decode PCInitiate message", zap.Error(err))
+		return err
+	}
+
+	// Send PCRpt response to PCInitiate
+	return ss.SendPCRpt(message)
+}
+
+func (ss *Session) handlePCUpdate(length uint16) error {
+	ss.logger.Debug("Received PCUpdate Message")
+
+	messageBodyBytes := make([]uint8, length-pcep.CommonHeaderLength)
+	if _, err := ss.tcpConn.Read(messageBodyBytes); err != nil {
+		return err
+	}
+
+	message := &pcep.PCUpdMessage{}
+	if err := message.DecodeFromBytes(messageBodyBytes); err != nil {
+		ss.logger.Warn("Failed to decode PCUpdate message", zap.Error(err))
+		return err
+	}
+
+	// Send PCRpt response to PCUpdate
+	return ss.SendPCRpt(message)
+}
+
+func (ss *Session) SendPCRpt(message interface{}) error {
+	pcrptMessage := pcep.NewPCRptMessage()
+	var stateReport *pcep.StateReport
+
+	switch msg := message.(type) {
+	case *pcep.PCInitiateMessage:
+		if msg.LSPObject.RFlag {
+			// LSP deletion request
+			ss.logger.Debug("Processing LSP deletion request", zap.Uint32("plspID", msg.LSPObject.PlspID))
+
+			stateReport = &pcep.StateReport{
+				SrpObject: &pcep.SrpObject{
+					SrpID: msg.SrpObject.SrpID,
+					TLVs: []pcep.TLVInterface{
+						&pcep.PathSetupType{
+							PathSetupType: pcep.PathSetupTypeSRv6TE,
+						},
+					},
+				},
+				LSPObject: &pcep.LSPObject{
+					PlspID: msg.LSPObject.PlspID,
+					Name:   msg.LSPObject.Name,
+					SFlag:  false,
+					DFlag:  true,
+					CFlag:  false,
+					AFlag:  false,
+					RFlag:  true, // Mark for removal
+					OFlag:  0,
+					TLVs: []pcep.TLVInterface{
+						&pcep.SymbolicPathName{
+							Name: msg.LSPObject.Name,
+						},
+					},
+				},
+			}
+
+			// Delete SR Policy from local storage
+			ss.DeleteSRPolicy(*stateReport)
+
+			ss.logger.Debug("Send PCRpt Response to PCInitiate (Delete)",
+				zap.Uint32("srpID", msg.SrpObject.SrpID),
+				zap.Uint32("plspID", stateReport.LSPObject.PlspID))
+		} else {
+			// LSP creation request
+			ss.logger.Debug("Processing LSP creation request", zap.String("name", msg.LSPObject.Name))
+
+			// Create state report based on PCInitiate request
+			stateReport = &pcep.StateReport{
+				SrpObject: &pcep.SrpObject{
+					SrpID: msg.SrpObject.SrpID, // Echo back the SRP-ID from PCInitiate
+					TLVs: []pcep.TLVInterface{
+						&pcep.PathSetupType{
+							PathSetupType: pcep.PathSetupTypeSRv6TE,
+						},
+					},
+				},
+				LSPObject: &pcep.LSPObject{
+					PlspID: ss.generatePLSPID(), // Generate new PLSP-ID for the LSP
+					Name:   msg.LSPObject.Name,
+					SFlag:  false, // Not in sync state
+					DFlag:  true,  // PCE can delegate
+					CFlag:  true,  // LSP was created
+					AFlag:  true,  // LSP is administratively active
+					RFlag:  false, // LSP is not being removed
+					OFlag:  1,     // LSP is operationally active
+					TLVs: []pcep.TLVInterface{
+						&pcep.SymbolicPathName{
+							Name: msg.LSPObject.Name,
+						},
+					},
+				},
+				EroObject:         msg.EroObject,         // Echo back the ERO from PCInitiate
+				AssociationObject: msg.AssociationObject, // Echo back Association if present
+			}
+
+			// Set source and destination addresses from Endpoints object
+			if msg.EndpointsObject != nil {
+				stateReport.LSPObject.SrcAddr = msg.EndpointsObject.SrcAddr
+				stateReport.LSPObject.DstAddr = msg.EndpointsObject.DstAddr
+			}
+
+			// Register SR Policy to local storage
+			ss.RegisterSRPolicy(*stateReport)
+
+			ss.logger.Debug("Send PCRpt Response to PCInitiate (Create)",
+				zap.Uint32("srpID", msg.SrpObject.SrpID),
+				zap.Uint32("plspID", stateReport.LSPObject.PlspID))
+		}
+
+	case *pcep.PCUpdMessage:
+		// Create state report based on PCUpdate request
+		stateReport = &pcep.StateReport{
+			SrpObject: &pcep.SrpObject{
+				SrpID: msg.SrpObject.SrpID, // Echo back the SRP-ID from PCUpdate
+				TLVs: []pcep.TLVInterface{
+					&pcep.PathSetupType{
+						PathSetupType: pcep.PathSetupTypeSRv6TE,
+					},
+				},
+			},
+			LSPObject: &pcep.LSPObject{
+				PlspID: msg.LSPObject.PlspID, // Use existing PLSP-ID from PCUpdate
+				Name:   msg.LSPObject.Name,
+				SFlag:  false, // Not in sync state
+				DFlag:  true,  // PCE can delegate
+				CFlag:  true,  // LSP was not created (existing LSP)
+				AFlag:  true,  // LSP is administratively active
+				RFlag:  false, // LSP is not being removed
+				OFlag:  1,     // LSP is operationally active
+				TLVs: []pcep.TLVInterface{
+					&pcep.SymbolicPathName{
+						Name: msg.LSPObject.Name,
+					},
+				},
+			},
+			EroObject: msg.EroObject, // Echo back the ERO from PCUpdate
+		}
+
+		ss.logger.Debug("Send PCRpt Response to PCUpdate",
+			zap.Uint32("srpID", msg.SrpObject.SrpID),
+			zap.Uint32("plspID", stateReport.LSPObject.PlspID))
+
+	default:
+		return fmt.Errorf("unsupported message type for PCRpt response: %T", message)
+	}
+
+	pcrptMessage.StateReports = append(pcrptMessage.StateReports, stateReport)
+	return ss.sendPCEPMessage(pcrptMessage)
+}
+
+func (ss *Session) generatePLSPID() uint32 {
+	// Simple PLSP-ID generation - start from 1 and increment
+	// In a real implementation, this should be more sophisticated
+	maxPLSPID := uint32(0)
+	for _, policy := range ss.srPolicies {
+		if policy.PlspID > maxPLSPID {
+			maxPLSPID = policy.PlspID
+		}
+	}
+	return maxPLSPID + 1
+}
+
+func (ss *Session) SendSyncCompletion() error {
+	// Create PCRpt message with PLSP-ID=0 to indicate sync completion
+	pcrptMessage := pcep.NewPCRptMessage()
+
+	// Create state report with PLSP-ID=0 to indicate end of synchronization
+	stateReport := &pcep.StateReport{
+		LSPObject: &pcep.LSPObject{
+			PlspID: 0,     // PLSP-ID 0 indicates end of synchronization
+			Name:   "",    // Empty name for sync completion
+			SFlag:  false, // S-flag false for sync completion
+			DFlag:  false,
+			CFlag:  false,
+			AFlag:  false,
+			RFlag:  false,
+			OFlag:  0,
+		},
+		EroObject: &pcep.EroObject{
+			ObjectType:    pcep.ObjectTypeEROExplicitRoute,
+			EroSubobjects: []pcep.EroSubobject{}, // Empty ERO for sync completion
+		},
+	}
+
+	pcrptMessage.StateReports = append(pcrptMessage.StateReports, stateReport)
+
+	ss.logger.Debug("Send PCRpt Sync Completion Message")
+	return ss.sendPCEPMessage(pcrptMessage)
 }
 
 func (ss *Session) RegisterSRPolicy(sr pcep.StateReport) {
