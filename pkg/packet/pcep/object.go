@@ -290,6 +290,148 @@ func NewOpenObject(sessionID uint8, keepalive uint8, capabilities []CapabilityIn
 	return o, nil
 }
 
+// RP Object Types (RFC5440 7.4)
+const (
+	ObjectTypeRPRP ObjectType = 0x01
+)
+
+// RP (Request Parameters) Object (RFC5440 7.4)
+type RPObject struct {
+	ObjectType ObjectType
+	OFlag      bool   // Strict/Loose bit
+	BFlag      bool   // Bi-directional bit
+	RFlag      bool   // Reoptimization bit
+	Priority   uint8  // 3 bits
+	RequestID  uint32 // Request ID-number
+}
+
+func (o *RPObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 8 {
+		return fmt.Errorf("RP object body too short: expected 8 bytes, got %d", len(objectBody))
+	}
+
+	o.ObjectType = objectType
+	// Flags in byte 4
+	o.OFlag = (objectBody[4] & 0x80) != 0    // bit 0
+	o.BFlag = (objectBody[4] & 0x40) != 0    // bit 1
+	o.RFlag = (objectBody[4] & 0x20) != 0    // bit 2
+	o.Priority = (objectBody[4] & 0x1C) >> 2 // bits 5-7
+	// Request ID in bytes 4-7
+	o.RequestID = binary.BigEndian.Uint32(objectBody[4:8])
+	// Clear flag bits from RequestID
+	o.RequestID = o.RequestID & 0x00FFFFFF
+
+	return nil
+}
+
+func (o *RPObject) Serialize() []uint8 {
+	rpObjectLength := uint16(8 + commonObjectHeaderLength)
+	rpObjectHeader := NewCommonObjectHeader(ObjectClassRP, o.ObjectType, rpObjectLength)
+	byteRPObjectHeader := rpObjectHeader.Serialize()
+
+	buf := make([]uint8, 8)
+	// Reserved bytes 0-3
+	// Flags and Request ID in bytes 4-7
+	flags := uint8(0)
+	if o.OFlag {
+		flags |= 0x80
+	}
+	if o.BFlag {
+		flags |= 0x40
+	}
+	if o.RFlag {
+		flags |= 0x20
+	}
+	flags |= (o.Priority & 0x07) << 2
+
+	requestIDWithFlags := (uint32(flags) << 24) | (o.RequestID & 0x00FFFFFF)
+	binary.BigEndian.PutUint32(buf[4:8], requestIDWithFlags)
+
+	byteRPObject := AppendByteSlices(byteRPObjectHeader, buf)
+	return byteRPObject
+}
+
+func (o *RPObject) Len() uint16 {
+	return 8 + commonObjectHeaderLength
+}
+
+func NewRPObject(requestID uint32, priority uint8, loose bool, bidirectional bool, reoptimization bool) (*RPObject, error) {
+	if priority > 7 {
+		return nil, fmt.Errorf("priority must be 0-7, got %d", priority)
+	}
+
+	return &RPObject{
+		ObjectType: ObjectTypeRPRP,
+		OFlag:      loose,
+		BFlag:      bidirectional,
+		RFlag:      reoptimization,
+		Priority:   priority,
+		RequestID:  requestID,
+	}, nil
+}
+
+// NO-PATH Object Types (RFC5440 7.5)
+const (
+	ObjectTypeNoPathNoPath ObjectType = 0x01
+)
+
+// NO-PATH Object (RFC5440 7.5)
+type NoPathObject struct {
+	ObjectType         ObjectType
+	CFlag              bool   // C bit
+	NoPathIssueType    uint8  // Nature of Issue
+	NoPathVectorLength uint16 // Length of No-Path-Vector TLV
+}
+
+func (o *NoPathObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
+	if len(objectBody) < 4 {
+		return fmt.Errorf("NO-PATH object body too short: expected at least 4 bytes, got %d", len(objectBody))
+	}
+
+	o.ObjectType = objectType
+	o.CFlag = (objectBody[1] & 0x80) != 0
+	o.NoPathIssueType = objectBody[1] & 0x0F
+	o.NoPathVectorLength = binary.BigEndian.Uint16(objectBody[2:4])
+
+	return nil
+}
+
+func (o *NoPathObject) Serialize() []uint8 {
+	noPathObjectLength := uint16(4 + commonObjectHeaderLength)
+	noPathObjectHeader := NewCommonObjectHeader(ObjectClassNoPath, o.ObjectType, noPathObjectLength)
+	byteNoPathObjectHeader := noPathObjectHeader.Serialize()
+
+	buf := make([]uint8, 4)
+	// byte 0: Reserved
+	// byte 1: Flags and Nature of Issue
+	if o.CFlag {
+		buf[1] |= 0x80
+	}
+	buf[1] |= o.NoPathIssueType & 0x0F
+	// bytes 2-3: No-Path-Vector Length
+	binary.BigEndian.PutUint16(buf[2:4], o.NoPathVectorLength)
+
+	byteNoPathObject := AppendByteSlices(byteNoPathObjectHeader, buf)
+	return byteNoPathObject
+}
+
+func (o *NoPathObject) Len() uint16 {
+	return 4 + commonObjectHeaderLength
+}
+
+func NewNoPathObject(cFlag bool, issueType uint8) (*NoPathObject, error) {
+	if issueType > 15 {
+		return nil, fmt.Errorf("issue type must be 0-15, got %d", issueType)
+	}
+
+	return &NoPathObject{
+		ObjectType:         ObjectTypeNoPathNoPath,
+		CFlag:              cFlag,
+		NoPathIssueType:    issueType,
+		NoPathVectorLength: 0,
+	}, nil
+}
+
 // BANDWIDTH Object (RFC5440 7.7)
 type BandwidthObject struct {
 	ObjectType ObjectType
@@ -300,6 +442,22 @@ func (o *BandwidthObject) DecodeFromBytes(objectType ObjectType, objectBody []ui
 	o.ObjectType = objectType
 	o.Bandwidth = binary.BigEndian.Uint32(objectBody[:])
 	return nil
+}
+
+func (o *BandwidthObject) Serialize() []uint8 {
+	bandwidthObjectLength := uint16(4 + commonObjectHeaderLength)
+	bandwidthObjectHeader := NewCommonObjectHeader(ObjectClassBandwidth, o.ObjectType, bandwidthObjectLength)
+	byteBandwidthObjectHeader := bandwidthObjectHeader.Serialize()
+
+	buf := make([]uint8, 4)
+	binary.BigEndian.PutUint32(buf, o.Bandwidth)
+
+	byteBandwidthObject := AppendByteSlices(byteBandwidthObjectHeader, buf)
+	return byteBandwidthObject
+}
+
+func (o *BandwidthObject) Len() uint16 {
+	return 4 + commonObjectHeaderLength
 }
 
 // METRIC Object (RFC5440 7.8)

@@ -171,6 +171,310 @@ func NewKeepaliveMessage() (*KeepaliveMessage, error) {
 	return m, nil
 }
 
+// PCReq (Path Computation Request) Message (RFC5440 6.4)
+type PCReqMessage struct {
+	RequestList []*RequestListItem
+}
+
+type RequestListItem struct {
+	RPObject        *RPObject
+	EndpointsObject *EndpointsObject
+	LSPAObject      *LSPAObject
+	BandwidthObject *BandwidthObject
+	MetricObjects   []*MetricObject
+}
+
+func (m *PCReqMessage) DecodeFromBytes(messageBody []uint8) error {
+	for len(messageBody) > 0 {
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+			return fmt.Errorf("failed to decode common object header: %w", err)
+		}
+
+		switch commonObjectHeader.ObjectClass {
+		case ObjectClassRP:
+			// New request starts with RP object
+			requestItem := &RequestListItem{}
+			rpObject := &RPObject{}
+			if err := rpObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode RP object: %w", err)
+			}
+			requestItem.RPObject = rpObject
+			m.RequestList = append(m.RequestList, requestItem)
+
+		case ObjectClassEndpoints:
+			if len(m.RequestList) == 0 {
+				return fmt.Errorf("endpoints object without preceding RP object")
+			}
+			currentRequest := m.RequestList[len(m.RequestList)-1]
+			endpointsObject := &EndpointsObject{}
+			if err := endpointsObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode endpoints object: %w", err)
+			}
+			currentRequest.EndpointsObject = endpointsObject
+
+		case ObjectClassLSPA:
+			if len(m.RequestList) == 0 {
+				return fmt.Errorf("LSPA object without preceding RP object")
+			}
+			currentRequest := m.RequestList[len(m.RequestList)-1]
+			lspaObject := &LSPAObject{}
+			if err := lspaObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode LSPA object: %w", err)
+			}
+			currentRequest.LSPAObject = lspaObject
+
+		case ObjectClassBandwidth:
+			if len(m.RequestList) == 0 {
+				return fmt.Errorf("bandwidth object without preceding RP object")
+			}
+			currentRequest := m.RequestList[len(m.RequestList)-1]
+			bandwidthObject := &BandwidthObject{}
+			if err := bandwidthObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode bandwidth object: %w", err)
+			}
+			currentRequest.BandwidthObject = bandwidthObject
+
+		case ObjectClassMetric:
+			if len(m.RequestList) == 0 {
+				return fmt.Errorf("metric object without preceding RP object")
+			}
+			currentRequest := m.RequestList[len(m.RequestList)-1]
+			metricObject := &MetricObject{}
+			if err := metricObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode metric object: %w", err)
+			}
+			currentRequest.MetricObjects = append(currentRequest.MetricObjects, metricObject)
+
+		default:
+			// Skip unknown objects
+		}
+
+		messageBody = messageBody[commonObjectHeader.ObjectLength:]
+	}
+
+	return nil
+}
+
+func (m *PCReqMessage) Serialize() ([]uint8, error) {
+	var messageBody []uint8
+
+	for _, requestItem := range m.RequestList {
+		if requestItem.RPObject != nil {
+			byteRPObject := requestItem.RPObject.Serialize()
+			messageBody = append(messageBody, byteRPObject...)
+		}
+
+		if requestItem.EndpointsObject != nil {
+			byteEndpointsObject, err := requestItem.EndpointsObject.Serialize()
+			if err != nil {
+				return nil, fmt.Errorf("failed to serialize endpoints object: %w", err)
+			}
+			messageBody = append(messageBody, byteEndpointsObject...)
+		}
+
+		if requestItem.LSPAObject != nil {
+			byteLSPAObject := requestItem.LSPAObject.Serialize()
+			messageBody = append(messageBody, byteLSPAObject...)
+		}
+
+		if requestItem.BandwidthObject != nil {
+			byteBandwidthObject := requestItem.BandwidthObject.Serialize()
+			messageBody = append(messageBody, byteBandwidthObject...)
+		}
+
+		for _, metricObject := range requestItem.MetricObjects {
+			if metricObject != nil {
+				byteMetricObject := metricObject.Serialize()
+				messageBody = append(messageBody, byteMetricObject...)
+			}
+		}
+	}
+
+	messageLength := CommonHeaderLength + uint16(len(messageBody))
+	commonHeader := NewCommonHeader(MessageTypePcreq, messageLength)
+	byteCommonHeader := commonHeader.Serialize()
+	result := append(byteCommonHeader, messageBody...)
+	return result, nil
+}
+
+func NewPCReqMessage() *PCReqMessage {
+	return &PCReqMessage{
+		RequestList: []*RequestListItem{},
+	}
+}
+
+// PCRep (Path Computation Reply) Message (RFC5440 6.5)
+type PCRepMessage struct {
+	ResponseList []*ResponseListItem
+}
+
+type ResponseListItem struct {
+	RPObject        *RPObject
+	NoPathObject    *NoPathObject
+	EndpointsObject *EndpointsObject
+	EroObject       *EroObject
+	LSPAObject      *LSPAObject
+	BandwidthObject *BandwidthObject
+	MetricObjects   []*MetricObject
+}
+
+func (m *PCRepMessage) DecodeFromBytes(messageBody []uint8) error {
+	for len(messageBody) > 0 {
+		var commonObjectHeader CommonObjectHeader
+		if err := commonObjectHeader.DecodeFromBytes(messageBody); err != nil {
+			return fmt.Errorf("failed to decode common object header: %w", err)
+		}
+
+		switch commonObjectHeader.ObjectClass {
+		case ObjectClassRP:
+			// New response starts with RP object
+			responseItem := &ResponseListItem{}
+			rpObject := &RPObject{}
+			if err := rpObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode RP object: %w", err)
+			}
+			responseItem.RPObject = rpObject
+			m.ResponseList = append(m.ResponseList, responseItem)
+
+		case ObjectClassNoPath:
+			if len(m.ResponseList) == 0 {
+				return fmt.Errorf("NO-PATH object without preceding RP object")
+			}
+			currentResponse := m.ResponseList[len(m.ResponseList)-1]
+			noPathObject := &NoPathObject{}
+			if err := noPathObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode NO-PATH object: %w", err)
+			}
+			currentResponse.NoPathObject = noPathObject
+
+		case ObjectClassEndpoints:
+			if len(m.ResponseList) == 0 {
+				return fmt.Errorf("endpoints object without preceding RP object")
+			}
+			currentResponse := m.ResponseList[len(m.ResponseList)-1]
+			endpointsObject := &EndpointsObject{}
+			if err := endpointsObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode endpoints object: %w", err)
+			}
+			currentResponse.EndpointsObject = endpointsObject
+
+		case ObjectClassERO:
+			if len(m.ResponseList) == 0 {
+				return fmt.Errorf("ERO object without preceding RP object")
+			}
+			currentResponse := m.ResponseList[len(m.ResponseList)-1]
+			eroObject := &EroObject{}
+			if err := eroObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode ERO object: %w", err)
+			}
+			currentResponse.EroObject = eroObject
+
+		case ObjectClassLSPA:
+			if len(m.ResponseList) == 0 {
+				return fmt.Errorf("LSPA object without preceding RP object")
+			}
+			currentResponse := m.ResponseList[len(m.ResponseList)-1]
+			lspaObject := &LSPAObject{}
+			if err := lspaObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode LSPA object: %w", err)
+			}
+			currentResponse.LSPAObject = lspaObject
+
+		case ObjectClassBandwidth:
+			if len(m.ResponseList) == 0 {
+				return fmt.Errorf("bandwidth object without preceding RP object")
+			}
+			currentResponse := m.ResponseList[len(m.ResponseList)-1]
+			bandwidthObject := &BandwidthObject{}
+			if err := bandwidthObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode bandwidth object: %w", err)
+			}
+			currentResponse.BandwidthObject = bandwidthObject
+
+		case ObjectClassMetric:
+			if len(m.ResponseList) == 0 {
+				return fmt.Errorf("metric object without preceding RP object")
+			}
+			currentResponse := m.ResponseList[len(m.ResponseList)-1]
+			metricObject := &MetricObject{}
+			if err := metricObject.DecodeFromBytes(commonObjectHeader.ObjectType, messageBody[commonObjectHeaderLength:commonObjectHeader.ObjectLength]); err != nil {
+				return fmt.Errorf("failed to decode metric object: %w", err)
+			}
+			currentResponse.MetricObjects = append(currentResponse.MetricObjects, metricObject)
+
+		default:
+			// Skip unknown objects
+		}
+
+		messageBody = messageBody[commonObjectHeader.ObjectLength:]
+	}
+
+	return nil
+}
+
+func (m *PCRepMessage) Serialize() ([]uint8, error) {
+	var messageBody []uint8
+
+	for _, responseItem := range m.ResponseList {
+		if responseItem.RPObject != nil {
+			byteRPObject := responseItem.RPObject.Serialize()
+			messageBody = append(messageBody, byteRPObject...)
+		}
+
+		if responseItem.NoPathObject != nil {
+			byteNoPathObject := responseItem.NoPathObject.Serialize()
+			messageBody = append(messageBody, byteNoPathObject...)
+		} else {
+			// If no NO-PATH object, include computed path objects
+			if responseItem.EndpointsObject != nil {
+				byteEndpointsObject, err := responseItem.EndpointsObject.Serialize()
+				if err != nil {
+					return nil, fmt.Errorf("failed to serialize endpoints object: %w", err)
+				}
+				messageBody = append(messageBody, byteEndpointsObject...)
+			}
+
+			if responseItem.EroObject != nil {
+				byteEroObject, err := responseItem.EroObject.Serialize()
+				if err != nil {
+					return nil, fmt.Errorf("failed to serialize ERO object: %w", err)
+				}
+				messageBody = append(messageBody, byteEroObject...)
+			}
+
+			if responseItem.LSPAObject != nil {
+				byteLSPAObject := responseItem.LSPAObject.Serialize()
+				messageBody = append(messageBody, byteLSPAObject...)
+			}
+
+			if responseItem.BandwidthObject != nil {
+				byteBandwidthObject := responseItem.BandwidthObject.Serialize()
+				messageBody = append(messageBody, byteBandwidthObject...)
+			}
+
+			for _, metricObject := range responseItem.MetricObjects {
+				if metricObject != nil {
+					byteMetricObject := metricObject.Serialize()
+					messageBody = append(messageBody, byteMetricObject...)
+				}
+			}
+		}
+	}
+
+	messageLength := CommonHeaderLength + uint16(len(messageBody))
+	commonHeader := NewCommonHeader(MessageTypePcrep, messageLength)
+	byteCommonHeader := commonHeader.Serialize()
+	result := append(byteCommonHeader, messageBody...)
+	return result, nil
+}
+
+func NewPCRepMessage() *PCRepMessage {
+	return &PCRepMessage{
+		ResponseList: []*ResponseListItem{},
+	}
+}
+
 // PCErr Message
 type PCErrMessage struct {
 	PCEPErrorObject *PCEPErrorObject
