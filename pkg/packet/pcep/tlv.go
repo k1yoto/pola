@@ -517,8 +517,8 @@ type IPv6LSPIdentifiers struct {
 
 func (tlv *IPv6LSPIdentifiers) DecodeFromBytes(data []byte) error {
 	expectedLength := TLVHeaderLength + int(TLVIPv6LSPIdentifiersValueLength)
-	if len(data) != expectedLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for IPv6LSPIdentifiers", expectedLength, len(data))
+	if len(data) < expectedLength {
+		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for IPv6LSPIdentifiers", expectedLength, len(data))
 	}
 
 	var ok bool
@@ -645,15 +645,14 @@ const (
 
 func (tlv *SRPCECapability) DecodeFromBytes(data []byte) error {
 	expectedLength := TLVHeaderLength + int(TLVSRPCECapabilityValueLength)
-	if len(data) != expectedLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for SRPCECapability", expectedLength, len(data))
+	if len(data) < expectedLength {
+		return fmt.Errorf("data is too short: expected at least %d bytes, but got %d bytes for SRPCECapability", expectedLength, len(data))
 	}
 
 	// Extract TLV value field (after 4-byte TLV header)
 	val := data[TLVHeaderLength:]
-
-	if len(val) != int(TLVSRPCECapabilityValueLength) {
-		return fmt.Errorf("invalid value length for SRPCECapability: expected %d bytes, but got %d bytes", TLVSRPCECapabilityValueLength, len(val))
+	if len(val) < int(TLVSRPCECapabilityValueLength) {
+		return fmt.Errorf("value field is too short: expected at least %d bytes, but got %d bytes for SRPCECapability", TLVSRPCECapabilityValueLength, len(val))
 	}
 
 	flags := val[SRPCECapabilityFlagsIndex]
@@ -1164,7 +1163,7 @@ func (tlv *Color) Serialize() []byte {
 	buf = append(buf, typ...)
 
 	length := make([]byte, 2)
-	binary.BigEndian.PutUint16(length, TLVColorValueLength) // Use actual data length, not TLV type
+	binary.BigEndian.PutUint16(length, TLVColorValueLength)
 	buf = append(buf, length...)
 
 	color := make([]byte, 4)
