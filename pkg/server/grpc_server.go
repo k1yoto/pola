@@ -66,7 +66,7 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 	inputSRPolicy := input.GetSrPolicy()
 
 	if !disablePathCompute {
-		if s.pce.ted == nil {
+		if s.pce.TED == nil {
 			return nil, netip.Addr{}, netip.Addr{}, errors.New("ted is disabled")
 		}
 
@@ -80,7 +80,7 @@ func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePath
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
 
-		segmentList, err = getSegmentList(inputSRPolicy, input.GetAsn(), s.pce.ted)
+		segmentList, err = getSegmentList(inputSRPolicy, input.GetAsn(), s.pce.TED)
 		if err != nil {
 			return nil, netip.Addr{}, netip.Addr{}, err
 		}
@@ -262,7 +262,7 @@ func getSyncedPCEPSession(pce *Server, addr []byte) (*Session, error) {
 }
 
 func getLoopbackAddr(pce *Server, asn uint32, routerID string) (netip.Addr, error) {
-	node, ok := pce.ted.Nodes[asn][routerID]
+	node, ok := pce.TED.Nodes[asn][routerID]
 	if !ok {
 		return netip.Addr{}, fmt.Errorf("no node with AS %d and router ID %s", asn, routerID)
 	}
@@ -319,14 +319,14 @@ func (s *APIServer) GetSessionList(ctx context.Context, _ *pb.GetSessionListRequ
 	s.logger.Info("Received GetSessionList API request")
 
 	var sessions []*pb.Session
-	for _, pcepSession := range s.pce.sessionList {
+	for _, pcepSession := range s.pce.SessionList {
 		ss := &pb.Session{
-			Addr:     pcepSession.peerAddr.AsSlice(),
+			Addr:     pcepSession.PeerAddr.AsSlice(),
 			State:    pb.SessionState_SESSION_STATE_UP, // Only the UP state in the current specification
 			Caps:     []string{},
-			IsSynced: pcepSession.isSynced,
+			IsSynced: pcepSession.IsSynced,
 		}
-		for _, cap := range pcepSession.pccCapabilities {
+		for _, cap := range pcepSession.PCCCapabilities {
 			ss.Caps = append(ss.Caps, cap.CapStrings()...)
 		}
 		ss.Caps = slices.Compact(ss.Caps)
@@ -378,14 +378,14 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 		Enable: true,
 	}
 
-	if s.pce.ted == nil {
+	if s.pce.TED == nil {
 		ret.Enable = false
 		return ret, nil
 	}
 
-	ret.LsNodes = make([]*pb.LsNode, 0, len(s.pce.ted.Nodes))
+	ret.LsNodes = make([]*pb.LsNode, 0, len(s.pce.TED.Nodes))
 
-	for _, lsNodes := range s.pce.ted.Nodes {
+	for _, lsNodes := range s.pce.TED.Nodes {
 		for _, lsNode := range lsNodes {
 			node := &pb.LsNode{
 				Asn:        lsNode.ASN,
@@ -517,7 +517,7 @@ func (s *APIServer) DeleteSession(ctx context.Context, req *pb.DeleteSessionRequ
 	}
 
 	// Remove session info from PCE server
-	pce.closeSession(ss)
+	pce.CloseSession(ss)
 
 	return &pb.DeleteSessionResponse{IsSuccess: true}, nil
 }
