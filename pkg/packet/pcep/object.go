@@ -68,7 +68,7 @@ const (
 	ObjectClassXRO                               ObjectClass = 0x11
 	ObjectClassMonitoring                        ObjectClass = 0x13
 	ObjectClassPCCReqID                          ObjectClass = 0x14
-	ObjectClassOF                                ObjectClass = 0x15
+	ObjectClassOF                                ObjectClass = 0x15 // TODO: RFC8685
 	ObjectClassClassType                         ObjectClass = 0x16
 	ObjectClassGlobalConstraints                 ObjectClass = 0x18
 	ObjectClassPCEID                             ObjectClass = 0x19
@@ -298,12 +298,12 @@ const (
 // RP (Request Parameters) Object (RFC5440 7.4, RFC8685 3.3)
 type RPObject struct {
 	ObjectType ObjectType
-	OFlag      bool             // Strict/Loose bit
-	BFlag      bool             // Bi-directional bit
-	RFlag      bool             // Reoptimization bit
-	Priority   uint8            // 3 bits
-	RequestID  uint32           // Request ID-number
-	TLVs       []TLVInterface   // Optional TLVs (RFC8685)
+	OFlag      bool           // Strict/Loose bit
+	BFlag      bool           // Bi-directional bit
+	RFlag      bool           // Reoptimization bit
+	Priority   uint8          // 3 bits
+	RequestID  uint32         // Request ID-number
+	TLVs       []TLVInterface // Optional TLVs (RFC8685)
 }
 
 func (o *RPObject) DecodeFromBytes(objectType ObjectType, objectBody []uint8) error {
@@ -341,7 +341,7 @@ func (o *RPObject) Serialize() []uint8 {
 		tlvLength += tlv.Len()
 	}
 
-	rpObjectLength := uint16(8 + commonObjectHeaderLength) + tlvLength
+	rpObjectLength := uint16(8+commonObjectHeaderLength) + tlvLength
 	rpObjectHeader := NewCommonObjectHeader(ObjectClassRP, o.ObjectType, rpObjectLength)
 	byteRPObjectHeader := rpObjectHeader.Serialize()
 

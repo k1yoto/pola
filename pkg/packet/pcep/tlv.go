@@ -1301,10 +1301,28 @@ const (
 	HPCECapabilityFlagsIndex = 3
 )
 
+// func (tlv *HPCECapability) DecodeFromBytes(data []byte) error {
+// 	expectedLength := TLVHeaderLength + int(TLVHPCECapabilityValueLength)
+// 	if len(data) != expectedLength {
+// 		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for HPCECapability", expectedLength, len(data))
+// 	}
+
+// 	flags := uint32(data[TLVHeaderLength+HPCECapabilityFlagsIndex])
+// 	tlv.ParentPCERequest = flags&ParentPCERequestBit != 0
+
+//		return nil
+//	}
 func (tlv *HPCECapability) DecodeFromBytes(data []byte) error {
-	expectedLength := TLVHeaderLength + int(TLVHPCECapabilityValueLength)
-	if len(data) != expectedLength {
-		return fmt.Errorf("data length mismatch: expected %d bytes, but got %d bytes for HPCECapability", expectedLength, len(data))
+	if len(data) < TLVHeaderLength+int(TLVHPCECapabilityValueLength) {
+		return fmt.Errorf("data too short: expected at least %d bytes, but got %d bytes for HPCECapability",
+			TLVHeaderLength+int(TLVHPCECapabilityValueLength), len(data))
+	}
+
+	// TLV長を取得（実際の長さで処理）
+	actualLength := binary.BigEndian.Uint16(data[2:4])
+	if actualLength < TLVHPCECapabilityValueLength {
+		return fmt.Errorf("invalid TLV length: expected at least %d bytes, got %d bytes",
+			TLVHPCECapabilityValueLength, actualLength)
 	}
 
 	flags := uint32(data[TLVHeaderLength+HPCECapabilityFlagsIndex])
@@ -1428,10 +1446,49 @@ func (tlv *DomainID) CapStrings() []string {
 	return []string{"Domain-ID"}
 }
 
-func NewDomainID(domainType DomainType, domainID []byte) *DomainID {
+// NewDomainID creates a Domain-ID TLV from uint32 domain ID
+// This is the primary function for creating Domain-ID TLVs with ASN
+func NewDomainID(domainType DomainType, domainID uint32) *DomainID {
+	var domainIDBytes []byte
+
+	switch domainType {
+	case DomainType2ByteAS:
+		// 2-byte AS number (lower 16 bits)
+		domainIDBytes = make([]byte, 2)
+		binary.BigEndian.PutUint16(domainIDBytes, uint16(domainID))
+	case DomainType4ByteAS:
+		// 4-byte AS number
+		domainIDBytes = make([]byte, 4)
+		binary.BigEndian.PutUint32(domainIDBytes, domainID)
+	case DomainTypeOSPFAreaID, DomainTypeISISAreaID:
+		// Area ID (4 bytes)
+		domainIDBytes = make([]byte, 4)
+		binary.BigEndian.PutUint32(domainIDBytes, domainID)
+	default:
+		// Default to 4-byte representation
+		domainIDBytes = make([]byte, 4)
+		binary.BigEndian.PutUint32(domainIDBytes, domainID)
+	}
+
 	return &DomainID{
 		DomainType: domainType,
-		DomainID:   domainID,
+		DomainID:   domainIDBytes,
+	}
+}
+
+// GetDomainIDAsUint32 extracts domain ID as uint32
+// Returns the domain ID as uint32 and true if successful, 0 and false otherwise
+func (tlv *DomainID) GetDomainIDAsUint32() uint32 {
+	switch len(tlv.DomainID) {
+	case 2:
+		// 2-byte domain ID
+		return uint32(binary.BigEndian.Uint16(tlv.DomainID))
+	case 4:
+		// 4-byte domain ID
+		return binary.BigEndian.Uint32(tlv.DomainID)
+	default:
+		// Unsupported length
+		return 0
 	}
 }
 
