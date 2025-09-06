@@ -12,14 +12,13 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-type PCEP struct {
+type PCEPServer struct {
 	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
-type PCC struct {
-	PCEAddr string `yaml:"pce_addr"`
-	PCCAddr string `yaml:"pcc_addr"`
+type PCEPClient struct {
+	Address string `yaml:"address"`
 	Port    string `yaml:"port"`
 }
 
@@ -49,14 +48,15 @@ type TED struct {
 }
 
 type Global struct {
-	PCEP       PCEP       `yaml:"pcep"`
-	PCC        PCC        `yaml:"pcc"`
+	Mode       string     `yaml:"mode"` // "pcc", "pce", "c-pce", "p-pce"
+	PCEPServer PCEPServer `yaml:"pcep_server"`
+	PCEPClient PCEPClient `yaml:"pcep_client"`
 	GRPCServer GRPCServer `yaml:"grpc_server"`
 	Log        Log        `yaml:"log"`
 	TED        *TED       `yaml:"ted"`
 	GoBGP      GoBGP      `yaml:"gobgp"`
 	USidMode   bool       `yaml:"usid_mode"`
-	Mode       string     `yaml:"mode"`
+	DomainID   uint32     `yaml:"domain_id"`
 }
 
 type Config struct {
