@@ -13,6 +13,7 @@ import (
 	"net"
 	"net/netip"
 	"slices"
+	"time"
 
 	pb "github.com/nttcom/pola/api/pola/v1"
 	"github.com/nttcom/pola/internal/pkg/cspf"
@@ -135,21 +136,91 @@ func sendSRPolicyRequest(s *APIServer, input *pb.CreateSRPolicyRequest, segmentL
 }
 
 func (s *APIServer) CreateSRPolicy(ctx context.Context, req *pb.CreateSRPolicyRequest) (*pb.CreateSRPolicyResponse, error) {
-	pathcompute := req.GetPathCompute()
-	if err := validateCreateSRPolicy(req, pathcompute); err != nil {
-		return nil, fmt.Errorf("failed to validate SR policy creation: %w", err)
+	// Record server receive time
+	serverStartTime := time.Now()
+	requestID := req.GetRequestId()
+
+	// Calculate gRPC latency if start time is provided
+	var grpcLatencyUs int64
+	if req.GetStartTimeNs() > 0 {
+		cliStartTime := time.Unix(0, req.GetStartTimeNs())
+		grpcLatency := serverStartTime.Sub(cliStartTime)
+		grpcLatencyUs = grpcLatency.Microseconds()
 	}
 
-	segmentList, srcAddr, dstAddr, err := buildSegmentList(s, req, pathcompute)
+	// Log request details
+	reqJSON, err := json.Marshal(req)
+	if err != nil {
+		s.logger.Error("Failed to marshal request", zap.Error(err))
+	} else {
+		s.logger.Debug("Request details", zap.String("request", string(reqJSON)))
+	}
+
+	enablePathCompute := req.GetPathCompute()
+
+	// Validation phase
+	validationStart := time.Now()
+	if err := validateCreateSRPolicy(req, enablePathCompute); err != nil {
+		return nil, fmt.Errorf("failed to validate SR policy creation: %w", err)
+	}
+	validationDuration := time.Since(validationStart)
+	validationUs := validationDuration.Microseconds()
+
+	// Path computation phase (includes CSPF if dynamic)
+	pathComputeStart := time.Now()
+	segmentList, srcAddr, dstAddr, err := buildSegmentList(s, req, enablePathCompute)
 	if err != nil {
 		return nil, fmt.Errorf("failed to build segment list: %w", err)
 	}
+	pathComputeDuration := time.Since(pathComputeStart)
+	pathComputeUs := pathComputeDuration.Microseconds()
 
+	// PCEP send phase
+	pcepSendStart := time.Now()
 	if err := sendSRPolicyRequest(s, req, segmentList, srcAddr, dstAddr); err != nil {
 		return nil, fmt.Errorf("failed to send SR policy request: %w", err)
 	}
+	pcepSendDuration := time.Since(pcepSendStart)
+	pcepSendUs := pcepSendDuration.Microseconds()
 
-	return &pb.CreateSRPolicyResponse{IsSuccess: true}, nil
+	// Calculate total times
+	totalServerDuration := time.Since(serverStartTime)
+	totalServerUs := totalServerDuration.Microseconds()
+
+	var totalE2EUs int64
+	if req.GetStartTimeNs() > 0 {
+		cliStartTime := time.Unix(0, req.GetStartTimeNs())
+		totalE2EDuration := time.Since(cliStartTime)
+		totalE2EUs = totalE2EDuration.Microseconds()
+	}
+
+	s.logger.Info("SR Policy creation completed successfully",
+		zap.String("requestId", requestID),
+		zap.String("policyName", req.GetSrPolicy().GetPolicyName()),
+		zap.Uint32("color", req.GetSrPolicy().GetColor()),
+		zap.String("srcAddr", srcAddr.String()),
+		zap.String("dstAddr", dstAddr.String()),
+		zap.Int("segmentCount", len(segmentList)),
+		zap.Duration("totalServerTime", totalServerDuration),
+		zap.Duration("validationTime", validationDuration),
+		zap.Duration("pathComputeTime", pathComputeDuration),
+		zap.Duration("pcepSendTime", pcepSendDuration))
+
+	// Build performance metrics
+	metrics := &pb.PerformanceMetrics{
+		GrpcLatencyUs: grpcLatencyUs,
+		ValidationUs:  validationUs,
+		PathComputeUs: pathComputeUs,
+		PcepSendUs:    pcepSendUs,
+		TotalServerUs: totalServerUs,
+		TotalE2EUs:    totalE2EUs,
+	}
+
+	return &pb.CreateSRPolicyResponse{
+		IsSuccess: true,
+		RequestId: requestID,
+		Metrics:   metrics,
+	}, nil
 }
 
 func (s *APIServer) DeleteSRPolicy(ctx context.Context, input *pb.DeleteSRPolicyRequest) (*pb.DeleteSRPolicyResponse, error) {

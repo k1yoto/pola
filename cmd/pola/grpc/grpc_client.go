@@ -99,12 +99,12 @@ func GetSRPolicyList(client pb.PCEServiceClient) (map[netip.Addr][]table.SRPolic
 	return policies, nil
 }
 
-func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) error {
+func CreateSRPolicy(client pb.PCEServiceClient, req *pb.CreateSRPolicyRequest) (*pb.CreateSRPolicyResponse, error) {
 	ctx, cancel := withTimeout()
 	defer cancel()
 
-	_, err := client.CreateSRPolicy(ctx, req)
-	return err
+	resp, err := client.CreateSRPolicy(ctx, req)
+	return resp, err
 }
 
 func DeleteSRPolicy(client pb.PCEServiceClient, req *pb.DeleteSRPolicyRequest) error {
