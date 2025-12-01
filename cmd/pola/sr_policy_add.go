@@ -10,7 +10,9 @@ import (
 	"fmt"
 	"net/netip"
 	"os"
+	"time"
 
+	"github.com/google/uuid"
 	"github.com/spf13/cobra"
 	yaml "gopkg.in/yaml.v2"
 
@@ -89,12 +91,17 @@ type InputFormat struct {
 }
 
 func addSRPolicy(input InputFormat, jsonFlag bool, explicitPathFlag bool) error {
+	var metrics *pb.PerformanceMetrics
+	var err error
+
 	if explicitPathFlag {
-		if err := addSRPolicyWithExplicitPath(input); err != nil {
+		metrics, err = addSRPolicyWithExplicitPath(input)
+		if err != nil {
 			return err
 		}
 	} else {
-		if err := addSRPolicyWithDynamicPath(input); err != nil {
+		metrics, err = addSRPolicyWithDynamicPath(input)
+		if err != nil {
 			return err
 		}
 	}
@@ -102,12 +109,33 @@ func addSRPolicy(input InputFormat, jsonFlag bool, explicitPathFlag bool) error 
 		fmt.Printf("{\"status\": \"success\"}\n")
 	} else {
 		fmt.Printf("success!\n")
+		if metrics != nil {
+			printMetrics(metrics)
+		}
 	}
 
 	return nil
 }
 
-func addSRPolicyWithExplicitPath(input InputFormat) error {
+func printMetrics(m *pb.PerformanceMetrics) {
+	fmt.Printf("\n=== Performance Metrics ===\n")
+	fmt.Printf("gRPC Latency:      %4d us\n", m.GrpcLatencyUs)
+	fmt.Printf("Validation:        %4d us\n", m.ValidationUs)
+	fmt.Printf("Path Computation:  %4d us\n", m.PathComputeUs)
+	fmt.Printf("PCEP Send:         %4d us\n", m.PcepSendUs)
+	fmt.Printf("---------------------------\n")
+	fmt.Printf("Total Server Time: %4d us\n", m.TotalServerUs)
+	fmt.Printf("Total E2E Time:    %4d us\n", m.TotalE2EUs)
+	fmt.Printf("===========================\n")
+}
+
+func addSRPolicyWithExplicitPath(input InputFormat) (*pb.PerformanceMetrics, error) {
+	// Record start time
+	startTime := time.Now()
+
+	// Generate request ID
+	requestID := uuid.New().String()
+
 	if input.ASN == 0 || !input.SRPolicy.PCEPSessionAddr.IsValid() || input.SRPolicy.Color == 0 || !input.SRPolicy.SrcAddr.IsValid() || !input.SRPolicy.DstAddr.IsValid() || len(input.SRPolicy.SegmentList) == 0 {
 		sampleInput := "srPolicy:\n" +
 			"  pcep_session_addr: 192.0.2.1\n" +
@@ -122,7 +150,7 @@ func addSRPolicyWithExplicitPath(input InputFormat) error {
 		errMsg := "invalid input\n" +
 			"input example is below\n\n" +
 			sampleInput
-		return errors.New(errMsg)
+		return nil, errors.New(errMsg)
 	}
 
 	segmentList := []*pb.Segment{}
@@ -145,17 +173,27 @@ func addSRPolicyWithExplicitPath(input InputFormat) error {
 	}
 
 	request := &pb.CreateSRPolicyRequest{
-		SrPolicy: srPolicy,
-		Asn:      input.ASN,
-	}
-	if err := grpc.CreateSRPolicy(client, request); err != nil {
-		return err
+		SrPolicy:    srPolicy,
+		Asn:         input.ASN,
+		RequestId:   requestID,
+		StartTimeNs: startTime.UnixNano(),
 	}
 
-	return nil
+	resp, err := grpc.CreateSRPolicy(client, request)
+	if err != nil {
+		return nil, err
+	}
+
+	return resp.Metrics, nil
 }
 
-func addSRPolicyWithDynamicPath(input InputFormat) error {
+func addSRPolicyWithDynamicPath(input InputFormat) (*pb.PerformanceMetrics, error) {
+	// Record start time
+	startTime := time.Now()
+
+	// Generate request ID
+	requestID := uuid.New().String()
+
 	sampleInputDynamic := "#case: dynamic path\n" +
 		"asn: 65000\n" +
 		"srPolicy:\n" +
@@ -185,7 +223,7 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 			sampleInputExplicit +
 			"or, if create SR Policy without TED, then use `--explicit-path` flag\n"
 
-		return errors.New(errMsg)
+		return nil, errors.New(errMsg)
 	}
 	var srPolicyType pb.SRPolicyType
 	var metric pb.MetricType
@@ -197,7 +235,7 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 				"input example is below\n\n" +
 				sampleInputExplicit
 
-			return errors.New(errMsg)
+			return nil, errors.New(errMsg)
 		}
 		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_EXPLICIT
 		for _, segment := range input.SRPolicy.SegmentList {
@@ -208,7 +246,7 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 			errMsg := "invalid input\n" +
 				"input example is below\n\n" +
 				sampleInputDynamic
-			return errors.New(errMsg)
+			return nil, errors.New(errMsg)
 		}
 		srPolicyType = pb.SRPolicyType_SR_POLICY_TYPE_DYNAMIC
 		switch input.SRPolicy.Metric {
@@ -219,11 +257,11 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 		case "te":
 			metric = pb.MetricType_METRIC_TYPE_TE
 		default:
-			return fmt.Errorf("invalid input `metric`")
+			return nil, fmt.Errorf("invalid input `metric`")
 		}
 
 	default:
-		return fmt.Errorf("invalid input `type`")
+		return nil, fmt.Errorf("invalid input `type`")
 	}
 
 	srPolicy := &pb.SRPolicy{
@@ -240,11 +278,14 @@ func addSRPolicyWithDynamicPath(input InputFormat) error {
 		SrPolicy:    srPolicy,
 		Asn:         input.ASN,
 		PathCompute: true,
-	}
-	if err := grpc.CreateSRPolicy(client, inputData); err != nil {
-		return fmt.Errorf("gRPC Server Error: %s", err.Error())
-
+		RequestId:   requestID,
+		StartTimeNs: startTime.UnixNano(),
 	}
 
-	return nil
+	resp, err := grpc.CreateSRPolicy(client, inputData)
+	if err != nil {
+		return nil, fmt.Errorf("gRPC Server Error: %s", err.Error())
+	}
+
+	return resp.Metrics, nil
 }
