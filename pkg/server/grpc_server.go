@@ -52,21 +52,21 @@ func (s *APIServer) Serve(address string, port string) error {
 	return s.grpcServer.Serve(grpcListener)
 }
 
-func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, disablePathCompute bool) error {
-	if disablePathCompute {
+func validateCreateSRPolicy(req *pb.CreateSRPolicyRequest, enablePathCompute bool) error {
+	if !enablePathCompute {
 		return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAddDisablePathCompute)
 	}
 	return validate(req.GetSrPolicy(), req.GetAsn(), ValidationAdd)
 }
 
-func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, disablePathCompute bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
+func buildSegmentList(s *APIServer, input *pb.CreateSRPolicyRequest, enablePathCompute bool) ([]table.Segment, netip.Addr, netip.Addr, error) {
 	var srcAddr, dstAddr netip.Addr
 	var segmentList []table.Segment
 	var err error
 
 	inputSRPolicy := input.GetSrPolicy()
 
-	if !disablePathCompute {
+	if enablePathCompute {
 		if s.pce.TED == nil {
 			return nil, netip.Addr{}, netip.Addr{}, errors.New("ted is disabled")
 		}
