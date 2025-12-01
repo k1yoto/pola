@@ -49,10 +49,24 @@ message CreateSRPolicyRequest {
   SRPolicy sr_policy = 1;
   uint32 asn = 2;
   bool path_compute = 3;
+  string request_id = 4;      // Request tracking ID for performance measurement
+  int64 start_time_ns = 5;    // CLI start time in Unix nanoseconds
 }
 
 message CreateSRPolicyResponse {
   bool is_success = 1;
+  string request_id = 2;           // Request tracking ID
+  PerformanceMetrics metrics = 3;  // Performance measurement results
+}
+
+// Performance metrics for SR Policy creation
+message PerformanceMetrics {
+  int64 grpc_latency_us = 1;      // gRPC communication latency
+  int64 validation_us = 2;        // Validation time
+  int64 path_compute_us = 3;      // Path computation time including CSPF
+  int64 pcep_send_us = 4;         // PCEP message send time
+  int64 total_server_us = 5;      // Total server-side processing time
+  int64 total_e2e_us = 6;         // Total end-to-end time from CLI start
 }
 
 message DeleteSRPolicyRequest {
