@@ -294,5 +294,12 @@ func createSrv6SID(lsNode *table.LsNode, srv6SID *pb.LsSrv6SID) (*table.LsSrv6SI
 	lsSrv6SID.SIDStructure.LocalFunc = uint8(srv6SID.GetSidStructure().GetLocalFunc())
 	lsSrv6SID.SIDStructure.LocalArg = uint8(srv6SID.GetSidStructure().GetLocalArg())
 
+	if srv6SID.GetBgpPeerNodeSid() != nil {
+		lsSrv6SID.BGPPeerNodeSID.Flags = uint8(srv6SID.GetBgpPeerNodeSid().GetFlags())
+		lsSrv6SID.BGPPeerNodeSID.Weight = uint8(srv6SID.GetBgpPeerNodeSid().GetWeight())
+		lsSrv6SID.BGPPeerNodeSID.PeerASN = srv6SID.GetBgpPeerNodeSid().GetPeerAsn()
+		lsSrv6SID.BGPPeerNodeSID.PeerBGPID = srv6SID.GetBgpPeerNodeSid().GetPeerBgpId()
+	}
+
 	return lsSrv6SID, nil
 }

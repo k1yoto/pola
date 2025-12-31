@@ -560,6 +560,13 @@ func (s *APIServer) GetTED(ctx context.Context, req *pb.GetTEDRequest) (*pb.GetT
 					LocalArg:   uint32(lsSrv6SID.SIDStructure.LocalArg),
 				}
 
+				srv6SID.BgpPeerNodeSid = &pb.BgpPeerNodeSid{
+					Flags:     uint32(lsSrv6SID.BGPPeerNodeSID.Flags),
+					Weight:    uint32(lsSrv6SID.BGPPeerNodeSID.Weight),
+					PeerAsn:   lsSrv6SID.BGPPeerNodeSID.PeerASN,
+					PeerBgpId: lsSrv6SID.BGPPeerNodeSID.PeerBGPID,
+				}
+
 				node.LsSrv6Sids = append(node.LsSrv6Sids, srv6SID)
 			}
 
