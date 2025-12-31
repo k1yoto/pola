@@ -69,6 +69,13 @@ func (ted *LsTED) Print() {
 				fmt.Printf("    TrafficType: %d\n", srv6SID.TrafficType)
 				fmt.Printf("    OpaqueType: %d\n", srv6SID.OpaqueType)
 				fmt.Printf("    Value: 0x%x\n", srv6SID.Value)
+				if srv6SID.BGPPeerNodeSID.PeerASN != 0 || srv6SID.BGPPeerNodeSID.PeerBGPID != "" {
+					fmt.Printf("    BGP PeerNode SID:\n")
+					fmt.Printf("        Flags: %d\n", srv6SID.BGPPeerNodeSID.Flags)
+					fmt.Printf("        Weight: %d\n", srv6SID.BGPPeerNodeSID.Weight)
+					fmt.Printf("        Peer ASN: %d\n", srv6SID.BGPPeerNodeSID.PeerASN)
+					fmt.Printf("        Peer BGP ID: %s\n", srv6SID.BGPPeerNodeSID.PeerBGPID)
+				}
 			}
 
 			nodeCnt++
@@ -254,11 +261,19 @@ type EndpointBehavior struct {
 	Algorithm uint8
 }
 
+type BGPPeerNodeSID struct {
+	Flags     uint8
+	Weight    uint8
+	PeerASN   uint32
+	PeerBGPID string
+}
+
 type LsSrv6SID struct {
 	LocalNode        *LsNode          // primary key, in MP_REACH_NLRI Attr
 	Sids             []string         // in LsSrv6SID Attr
 	EndpointBehavior EndpointBehavior // in BGP-LS Attr
 	SIDStructure     SIDStructure     // in BGP-LS Attr
+	BGPPeerNodeSID   BGPPeerNodeSID   // in BGP-LS Attr
 	MultiTopoIDs     []uint32         // in LsSrv6SID Attr
 	ServiceType      uint32           // in LsSrv6SID Attr
 	TrafficType      uint32           // in LsSrv6SID Attr
