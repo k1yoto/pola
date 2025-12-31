@@ -112,6 +112,13 @@ message SidStructure {
   uint32 local_arg = 4;
 }
 
+message BgpPeerNodeSid {
+  uint32 flags = 1;
+	uint32 weight = 2;
+	uint32 peer_asn = 3;
+	string peer_bgp_id = 4;
+}
+
 message SID {
   string sid = 1;
 }
@@ -124,11 +131,12 @@ message LsSrv6SID {
   repeated SID sids = 1;
 	EndpointBehavior endpoint_behavior = 2;
   SidStructure sid_structure = 3;
-	repeated MultiTopoID multi_topo_ids = 4;
-	uint32 service_type = 5;
-	uint32 traffic_type = 6;
-	uint32 opaque_type = 7;
-	bytes value = 8;
+  BgpPeerNodeSid bgp_peer_node_sid = 4;
+	repeated MultiTopoID multi_topo_ids = 5;
+	uint32 service_type = 6;
+	uint32 traffic_type = 7;
+	uint32 opaque_type = 8;
+	bytes value = 9;
 }
 
 message LsPrefix {
