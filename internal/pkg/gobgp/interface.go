@@ -313,17 +313,19 @@ func getLsSrv6SIDNLRIList(pathAttrs []*api.Attribute) ([]table.TEDElem, error) {
 	var lsSrv6SIDList []table.TEDElem
 	var endpointBehavior *api.LsSrv6EndpointBehavior
 	var srv6SIDStructure *api.LsSrv6SIDStructure
+	var srv6BGPPeerNodeSid *api.LsSrv6BgpPeerNodeSID
 
 	for _, pathAttr := range pathAttrs {
 		switch attr := pathAttr.Attr.(type) {
 		case *api.Attribute_Ls:
 			srv6SIDStructure = attr.Ls.GetSrv6Sid().GetSrv6SidStructure()
 			endpointBehavior = attr.Ls.GetSrv6Sid().GetSrv6EndpointBehavior()
+			srv6BGPPeerNodeSid = attr.Ls.GetSrv6Sid().GetSrv6BgpPeerNodeSid()
 		case *api.Attribute_MpReach:
 			for _, nlri := range attr.MpReach.GetNlris() {
 				switch nlriType := nlri.GetNlri().(type) {
 				case *api.NLRI_LsAddrPrefix:
-					lsSrv6SID, err := getLsSrv6SIDNLRI(nlri.GetLsAddrPrefix().Nlri.GetSrv6Sid(), endpointBehavior, srv6SIDStructure)
+					lsSrv6SID, err := getLsSrv6SIDNLRI(nlri.GetLsAddrPrefix().Nlri.GetSrv6Sid(), endpointBehavior, srv6SIDStructure, srv6BGPPeerNodeSid)
 					if err != nil {
 						return nil, fmt.Errorf("failed to process LS SRv6 SID NLRI: %w", err)
 					}
@@ -367,7 +369,7 @@ func extractMethodValue(val reflect.Value, methodName string) (any, error) {
 }
 
 // getLsSrv6SIDNLRI processes the LS SRv6 SID NLRI and returns a corresponding LsSrv6SID.
-func getLsSrv6SIDNLRI(srv6SIDNLRI *api.LsSrv6SIDNLRI, endpointBehavior *api.LsSrv6EndpointBehavior, srv6SIDStructure *api.LsSrv6SIDStructure) (*table.LsSrv6SID, error) {
+func getLsSrv6SIDNLRI(srv6SIDNLRI *api.LsSrv6SIDNLRI, endpointBehavior *api.LsSrv6EndpointBehavior, srv6SIDStructure *api.LsSrv6SIDStructure, srv6BGPPeerNodeSID *api.LsSrv6BgpPeerNodeSID) (*table.LsSrv6SID, error) {
 	localNodeID := srv6SIDNLRI.GetLocalNode().GetIgpRouterId()
 	localNodeASN := srv6SIDNLRI.GetLocalNode().GetAsn()
 	srv6SIDs := srv6SIDNLRI.GetSrv6SidInformation().GetSids()
@@ -418,6 +420,12 @@ func getLsSrv6SIDNLRI(srv6SIDNLRI *api.LsSrv6SIDNLRI, endpointBehavior *api.LsSr
 	lsSrv6SID.EndpointBehavior.Behavior = uint16(endpointBehavior.GetEndpointBehavior())
 	lsSrv6SID.EndpointBehavior.Flags = uint8(endpointBehavior.GetFlags())
 	lsSrv6SID.EndpointBehavior.Algorithm = uint8(endpointBehavior.GetAlgorithm())
+	if srv6BGPPeerNodeSID != nil {
+		lsSrv6SID.BGPPeerNodeSID.Flags = uint8(srv6BGPPeerNodeSID.GetFlags())
+		lsSrv6SID.BGPPeerNodeSID.Weight = uint8(srv6BGPPeerNodeSID.GetWeight())
+		lsSrv6SID.BGPPeerNodeSID.PeerASN = srv6BGPPeerNodeSID.GetPeerAs()
+		lsSrv6SID.BGPPeerNodeSID.PeerBGPID = srv6BGPPeerNodeSID.GetPeerBgpId()
+	}
 	lsSrv6SID.Sids = srv6SIDs
 	lsSrv6SID.MultiTopoIDs = multiTopoIDs
 	lsSrv6SID.ServiceType = serviceType
