@@ -13,8 +13,8 @@ import (
 )
 
 type LsTED struct {
-	ID    int
-	Nodes map[uint32]map[string]*LsNode // { ASN1: {"NodeID1": node1, "NodeID2": node2}, ASN2: {"NodeID3": node3, "NodeID4": node4}}
+	ID    int                           `json:"id"`
+	Nodes map[uint32]map[string]*LsNode `json:"nodes"` // { ASN1: {"NodeID1": node1, "NodeID2": node2}, ASN2: {"NodeID3": node3, "NodeID4": node4}}
 }
 
 func (ted *LsTED) Update(tedElems []TEDElem) {
@@ -89,15 +89,15 @@ type TEDElem interface {
 }
 
 type LsNode struct {
-	ASN        uint32 // primary key, in MP_REACH_NLRI Attr
-	RouterID   string // primary key, in MP_REACH_NLRI Attr
-	IsisAreaID string // in BGP-LS Attr
-	Hostname   string // in BGP-LS Attr
-	SrgbBegin  uint32 // in BGP-LS Attr
-	SrgbEnd    uint32 // in BGP-LS Attr
-	Links      []*LsLink
-	Prefixes   []*LsPrefix
-	SRv6SIDs   []*LsSrv6SID
+	ASN        uint32       `json:"asn"`          // primary key, in MP_REACH_NLRI Attr
+	RouterID   string       `json:"router_id"`    // primary key, in MP_REACH_NLRI Attr
+	IsisAreaID string       `json:"isis_area_id"` // in BGP-LS Attr
+	Hostname   string       `json:"hostname"`     // in BGP-LS Attr
+	SrgbBegin  uint32       `json:"srgb_begin"`   // in BGP-LS Attr
+	SrgbEnd    uint32       `json:"srgb_end"`     // in BGP-LS Attr
+	Links      []*LsLink    `json:"links"`
+	Prefixes   []*LsPrefix  `json:"prefixes"`
+	SRv6SIDs   []*LsSrv6SID `json:"srv6_sids"`
 }
 
 func NewLsNode(asn uint32, nodeID string) *LsNode {
@@ -169,13 +169,13 @@ func (n *LsNode) AddLink(link *LsLink) {
 }
 
 type LsLink struct {
-	LocalNode   *LsNode      // Primary key, in MP_REACH_NLRI Attr
-	RemoteNode  *LsNode      // Primary key, in MP_REACH_NLRI Attr
-	LocalIP     netip.Addr   // In MP_REACH_NLRI Attr
-	RemoteIP    netip.Addr   // In MP_REACH_NLRI Attr
-	Metrics     []*Metric    // In BGP-LS Attr
-	AdjSid      uint32       // In BGP-LS Attr
-	Srv6EndXSID *Srv6EndXSID // In BGP-LS Attr
+	LocalNode   *LsNode      `json:"-"`             // Primary key, in MP_REACH_NLRI Attr (omit to avoid circular ref)
+	RemoteNode  *LsNode      `json:"-"`             // Primary key, in MP_REACH_NLRI Attr (omit to avoid circular ref)
+	LocalIP     netip.Addr   `json:"local_ip"`      // In MP_REACH_NLRI Attr
+	RemoteIP    netip.Addr   `json:"remote_ip"`     // In MP_REACH_NLRI Attr
+	Metrics     []*Metric    `json:"metrics"`       // In BGP-LS Attr
+	AdjSid      uint32       `json:"adj_sid"`       // In BGP-LS Attr
+	Srv6EndXSID *Srv6EndXSID `json:"srv6_endx_sid"` // In BGP-LS Attr
 }
 
 func NewLsLink(localNode *LsNode, remoteNode *LsNode) *LsLink {
@@ -216,9 +216,9 @@ func (l *LsLink) UpdateTED(ted *LsTED) {
 }
 
 type LsPrefix struct {
-	LocalNode *LsNode      // primary key, in MP_REACH_NLRI Attr
-	Prefix    netip.Prefix // in MP_REACH_NLRI Attr
-	SidIndex  uint32       // in BGP-LS Attr (only for Lo Address Prefix)
+	LocalNode *LsNode      `json:"-"`         // primary key, in MP_REACH_NLRI Attr (omit to avoid circular ref)
+	Prefix    netip.Prefix `json:"prefix"`    // in MP_REACH_NLRI Attr
+	SidIndex  uint32       `json:"sid_index"` // in BGP-LS Attr (only for Lo Address Prefix)
 }
 
 func NewLsPrefix(localNode *LsNode) *LsPrefix {
@@ -249,36 +249,36 @@ func (lp *LsPrefix) UpdateTED(ted *LsTED) {
 }
 
 type SIDStructure struct {
-	LocalBlock uint8
-	LocalNode  uint8
-	LocalFunc  uint8
-	LocalArg   uint8
+	LocalBlock uint8 `json:"local_block"`
+	LocalNode  uint8 `json:"local_node"`
+	LocalFunc  uint8 `json:"local_func"`
+	LocalArg   uint8 `json:"local_arg"`
 }
 
 type EndpointBehavior struct {
-	Behavior  uint16
-	Flags     uint8
-	Algorithm uint8
+	Behavior  uint16 `json:"behavior"`
+	Flags     uint8  `json:"flags"`
+	Algorithm uint8  `json:"algorithm"`
 }
 
 type BGPPeerNodeSID struct {
-	Flags     uint8
-	Weight    uint8
-	PeerASN   uint32
-	PeerBGPID string
+	Flags     uint8  `json:"flags"`
+	Weight    uint8  `json:"weight"`
+	PeerASN   uint32 `json:"peer_asn"`
+	PeerBGPID string `json:"peer_bgp_id"`
 }
 
 type LsSrv6SID struct {
-	LocalNode        *LsNode          // primary key, in MP_REACH_NLRI Attr
-	Sids             []string         // in LsSrv6SID Attr
-	EndpointBehavior EndpointBehavior // in BGP-LS Attr
-	SIDStructure     SIDStructure     // in BGP-LS Attr
-	BGPPeerNodeSID   BGPPeerNodeSID   // in BGP-LS Attr
-	MultiTopoIDs     []uint32         // in LsSrv6SID Attr
-	ServiceType      uint32           // in LsSrv6SID Attr
-	TrafficType      uint32           // in LsSrv6SID Attr
-	OpaqueType       uint32           // in LsSrv6SID Attr
-	Value            []byte           // in LsSrv6SID Attr
+	LocalNode        *LsNode          `json:"-"`                 // primary key, in MP_REACH_NLRI Attr (omit to avoid circular ref)
+	Sids             []string         `json:"sids"`              // in LsSrv6SID Attr
+	EndpointBehavior EndpointBehavior `json:"endpoint_behavior"` // in BGP-LS Attr
+	SIDStructure     SIDStructure     `json:"sid_structure"`     // in BGP-LS Attr
+	BGPPeerNodeSID   BGPPeerNodeSID   `json:"bgp_peer_node_sid"` // in BGP-LS Attr
+	MultiTopoIDs     []uint32         `json:"multi_topo_ids"`    // in LsSrv6SID Attr
+	ServiceType      uint32           `json:"service_type"`      // in LsSrv6SID Attr
+	TrafficType      uint32           `json:"traffic_type"`      // in LsSrv6SID Attr
+	OpaqueType       uint32           `json:"opaque_type"`       // in LsSrv6SID Attr
+	Value            []byte           `json:"value"`             // in LsSrv6SID Attr
 }
 
 func NewLsSrv6SID(node *LsNode) *LsSrv6SID {
@@ -308,8 +308,8 @@ func (n *LsNode) AddSrv6SID(s *LsSrv6SID) {
 }
 
 type Metric struct {
-	Type  MetricType
-	Value uint32
+	Type  MetricType `json:"type"`
+	Value uint32     `json:"value"`
 }
 
 func NewMetric(metricType MetricType, value uint32) *Metric {
@@ -344,7 +344,7 @@ func (m MetricType) String() string {
 }
 
 type Srv6EndXSID struct {
-	EndpointBehavior uint16
-	Sids             []string
-	Srv6SIDStructure SIDStructure
+	EndpointBehavior uint16       `json:"endpoint_behavior"`
+	Sids             []string     `json:"sids"`
+	Srv6SIDStructure SIDStructure `json:"srv6_sid_structure"`
 }
