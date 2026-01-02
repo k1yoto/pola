@@ -1,0 +1,508 @@
+#root {
+  width: 100%;
+  min-height: 100vh;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+.app-header {
+  background-color: #1a1a1a;
+  padding: 1rem 2rem;
+  border-bottom: 2px solid #646cff;
+  position: sticky;
+  top: 0;
+  z-index: 100;
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.75rem;
+  color: #fff;
+}
+
+.app-nav {
+  margin-top: 1rem;
+  display: flex;
+  gap: 1rem;
+}
+
+.nav-link {
+  color: #646cff;
+  text-decoration: none;
+  padding: 0.5rem 1rem;
+  border-radius: 4px;
+  transition: background-color 0.2s;
+  font-weight: 500;
+}
+
+.nav-link:hover {
+  background-color: rgba(100, 108, 255, 0.1);
+}
+
+.nav-link.active {
+  background-color: rgba(100, 108, 255, 0.2);
+}
+
+.app-main {
+  flex: 1;
+  max-width: 1400px;
+  width: 100%;
+  margin: 0 auto;
+  padding: 2rem;
+}
+
+.dashboard {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+
+/* SessionList Styles */
+.session-list {
+  margin: 2rem 0;
+  text-align: left;
+}
+
+.session-list h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #646cff;
+}
+
+.session-list table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.session-list th {
+  background-color: #1a1a1a;
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 2px solid #646cff;
+  font-weight: 600;
+}
+
+.session-list td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #333;
+}
+
+.session-list tr:hover {
+  background-color: rgba(100, 108, 255, 0.1);
+}
+
+.session-list .status {
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+.session-list .status.up {
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+}
+
+.session-list .status.down {
+  background-color: rgba(239, 68, 68, 0.2);
+  color: #ef4444;
+}
+
+.session-list .caps-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.session-list .caps-list li {
+  display: inline-block;
+  background-color: rgba(100, 108, 255, 0.2);
+  padding: 0.25rem 0.5rem;
+  margin: 0.125rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+}
+
+.session-list .synced {
+  color: #22c55e;
+  font-weight: bold;
+}
+
+.session-list .not-synced {
+  color: #ef4444;
+  font-weight: bold;
+}
+
+.session-list .error {
+  color: #ef4444;
+  padding: 1rem;
+  background-color: rgba(239, 68, 68, 0.1);
+  border-radius: 4px;
+}
+
+@media (prefers-color-scheme: light) {
+  .session-list th {
+    background-color: #f9f9f9;
+  }
+
+  .session-list td {
+    border-bottom: 1px solid #ddd;
+  }
+}
+
+/* SRPolicyList Styles */
+.policy-list {
+  margin: 2rem 0;
+  text-align: left;
+}
+
+.policy-list h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #646cff;
+}
+
+.policy-group {
+  margin-bottom: 2rem;
+  border: 1px solid #333;
+  border-radius: 8px;
+  padding: 1rem;
+}
+
+.policy-group h3 {
+  font-size: 1.2rem;
+  margin-bottom: 1rem;
+  color: #888;
+}
+
+.policy-list table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.policy-list th {
+  background-color: #1a1a1a;
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 2px solid #646cff;
+  font-weight: 600;
+}
+
+.policy-list td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #333;
+}
+
+.policy-list tr:hover {
+  background-color: rgba(100, 108, 255, 0.1);
+}
+
+.policy-list .color-badge {
+  display: inline-block;
+  background-color: rgba(100, 108, 255, 0.3);
+  color: #646cff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.policy-list .segment-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.policy-list .segment-item {
+  display: inline-block;
+  background-color: rgba(34, 197, 94, 0.2);
+  color: #22c55e;
+  padding: 0.25rem 0.5rem;
+  margin: 0.125rem;
+  border-radius: 4px;
+  font-size: 0.75rem;
+  font-family: monospace;
+}
+
+@media (prefers-color-scheme: light) {
+  .policy-group {
+    border: 1px solid #ddd;
+  }
+
+  .policy-list th {
+    background-color: #f9f9f9;
+  }
+
+  .policy-list td {
+    border-bottom: 1px solid #ddd;
+  }
+}
+
+/* TEDView Styles */
+.ted-view {
+  margin: 2rem 0;
+  text-align: left;
+}
+
+.ted-view h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #646cff;
+}
+
+.ted-summary {
+  background-color: rgba(100, 108, 255, 0.1);
+  padding: 1rem;
+  border-radius: 8px;
+  margin-bottom: 1rem;
+}
+
+.ted-summary p {
+  margin: 0.5rem 0;
+  font-weight: 500;
+}
+
+.ted-view table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+}
+
+.ted-view th {
+  background-color: #1a1a1a;
+  padding: 0.75rem;
+  text-align: left;
+  border-bottom: 2px solid #646cff;
+  font-weight: 600;
+  font-size: 0.875rem;
+}
+
+.ted-view td {
+  padding: 0.75rem;
+  border-bottom: 1px solid #333;
+  font-size: 0.875rem;
+}
+
+.ted-view tr:hover {
+  background-color: rgba(100, 108, 255, 0.1);
+}
+
+.ted-view .monospace {
+  font-family: monospace;
+  font-size: 0.8rem;
+}
+
+.ted-view .srgb {
+  font-family: monospace;
+  color: #22c55e;
+}
+
+.ted-view .badge {
+  display: inline-block;
+  background-color: rgba(100, 108, 255, 0.3);
+  color: #646cff;
+  padding: 0.25rem 0.5rem;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.75rem;
+  min-width: 2rem;
+  text-align: center;
+}
+
+/* PolicyEditor Styles */
+.policy-editor {
+  margin: 2rem 0;
+  text-align: left;
+}
+
+.policy-editor h2 {
+  font-size: 1.5rem;
+  margin-bottom: 1rem;
+  color: #646cff;
+}
+
+.mode-selector,
+.view-mode-selector {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.5rem;
+}
+
+.mode-selector button,
+.view-mode-selector button {
+  padding: 0.5rem 1rem;
+  border: 2px solid #646cff;
+  background-color: transparent;
+  color: #646cff;
+  border-radius: 4px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s;
+}
+
+.mode-selector button:hover,
+.view-mode-selector button:hover {
+  background-color: rgba(100, 108, 255, 0.1);
+}
+
+.mode-selector button.active,
+.view-mode-selector button.active {
+  background-color: #646cff;
+  color: white;
+}
+
+.notification {
+  padding: 1rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+  font-weight: 500;
+}
+
+.notification.error {
+  background-color: rgba(239, 68, 68, 0.1);
+  color: #ef4444;
+  border: 1px solid #ef4444;
+}
+
+.notification.success {
+  background-color: rgba(34, 197, 94, 0.1);
+  color: #22c55e;
+  border: 1px solid #22c55e;
+}
+
+.policy-form {
+  background-color: rgba(100, 108, 255, 0.05);
+  padding: 1.5rem;
+  border-radius: 8px;
+  border: 1px solid #333;
+}
+
+.form-group {
+  margin-bottom: 1rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: #888;
+}
+
+.form-group input[type="text"],
+.form-group input[type="number"],
+.form-group select {
+  width: 100%;
+  padding: 0.5rem;
+  border: 1px solid #333;
+  border-radius: 4px;
+  background-color: #1a1a1a;
+  color: white;
+  font-size: 1rem;
+}
+
+.form-group input[type="text"]:focus,
+.form-group input[type="number"]:focus,
+.form-group select:focus {
+  outline: none;
+  border-color: #646cff;
+}
+
+.form-group small {
+  display: block;
+  margin-top: 0.25rem;
+  color: #888;
+  font-size: 0.875rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: 1.25rem;
+  height: 1.25rem;
+  cursor: pointer;
+}
+
+.submit-button {
+  width: 100%;
+  padding: 0.75rem;
+  background-color: #646cff;
+  color: white;
+  border: none;
+  border-radius: 4px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  margin-top: 1rem;
+}
+
+.submit-button:hover:not(:disabled) {
+  background-color: #535bf2;
+}
+
+.submit-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.submit-button.delete {
+  background-color: #ef4444;
+}
+
+.submit-button.delete:hover:not(:disabled) {
+  background-color: #dc2626;
+}
+
+@media (prefers-color-scheme: light) {
+  .app-header {
+    background-color: #f9f9f9;
+    border-bottom: 2px solid #646cff;
+  }
+
+  .app-header h1 {
+    color: #213547;
+  }
+
+  .ted-view th {
+    background-color: #f9f9f9;
+  }
+
+  .ted-view td {
+    border-bottom: 1px solid #ddd;
+  }
+
+  .ted-summary {
+    background-color: rgba(100, 108, 255, 0.05);
+  }
+
+  .policy-form {
+    background-color: rgba(100, 108, 255, 0.02);
+    border: 1px solid #ddd;
+  }
+
+  .form-group input[type="text"],
+  .form-group input[type="number"],
+  .form-group select {
+    background-color: white;
+    color: #213547;
+    border: 1px solid #ddd;
+  }
+}
